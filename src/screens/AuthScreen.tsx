@@ -180,7 +180,7 @@ const AuthScreen = () => {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(text) => setEmail(text.trim().toLowerCase())}
               />
             </View>
 
