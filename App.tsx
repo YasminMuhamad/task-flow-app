@@ -3,13 +3,15 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './src/api/firebase';
 import AuthScreen from './src/screens/AuthScreen';
-import HomeScreen from './src/screens/HomeScreen';
+import DashboardScreen from './src/screens/DashboardScreen';
 import { COLORS } from './src/constants/theme';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
+  const handleProjectSelect = () => {
+      console.log('Project selected!');
+    };
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -27,7 +29,7 @@ export default function App() {
     );
   }
 
-  return user ? <HomeScreen /> : <AuthScreen />;
+  return user ? <DashboardScreen onProjectSelect={handleProjectSelect} /> : <AuthScreen />;
 }
 
 const styles = StyleSheet.create({

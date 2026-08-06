@@ -1,6 +1,8 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface UserProfile {
   uid: string;
-  name: string;
+  fullName: string;
   email: string;
-  createdAt: Date;
+  createdAt: Timestamp | Date;
 }
