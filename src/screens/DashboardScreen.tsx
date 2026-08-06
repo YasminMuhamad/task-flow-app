@@ -9,8 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore'; // 👈 إضافة where
-import { db, auth } from '../api/firebase'; // 👈 استيراد auth
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db, auth } from '../api/firebase';
 import { COLORS } from '../constants/theme';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { FilterTabs, FilterTab } from '../components/dashboard/FilterTabs';
@@ -19,7 +19,8 @@ import { CreateProjectModal } from '../components/dashboard/CreateProjectModal';
 import { Project } from '../types/project';
 
 interface Props {
-  onProjectSelect?: () => void;
+  // 👈 تم التحديث ليقبل كائن المشروع المحدد
+  onProjectSelect?: (project: Project) => void;
 }
 
 export default function DashboardScreen({
@@ -30,17 +31,14 @@ export default function DashboardScreen({
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // جلب المشاريع الخاصة بالمستخدم الحالي من Firestore لحظياً
   useEffect(() => {
     const currentUser = auth.currentUser;
 
-    // إذا لم يكن هناك مستخدم مسجل الدخول، نوقف التحميل
     if (!currentUser) {
       setLoading(false);
       return;
     }
 
-    // فلترة المشاريع التي يكون فيها uid المستخدم ضمن مصفوفة memberIds
     const q = query(
       collection(db, 'projects'),
       where('memberIds', 'array-contains', currentUser.uid)
@@ -54,7 +52,6 @@ export default function DashboardScreen({
           ...(doc.data() as Omit<Project, 'id'>),
         }));
 
-        // ترتيب المشاريع حسب التاريخ بعد جلبها (عشيلياً لمنع حوادث ترتيب Firestore المعقدة)
         loadedProjects.sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
           const dateB = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
@@ -98,7 +95,11 @@ export default function DashboardScreen({
             <Text style={styles.emptyText}>No projects found for you</Text>
           ) : (
             projects.map((p) => (
-              <ProjectCard key={p.id} project={p} onPress={onProjectSelect} />
+              <ProjectCard 
+                key={p.id} 
+                project={p} 
+                onPress={() => onProjectSelect(p)} // 👈 تمرير المشروع المحدد عند الضغط
+              />
             ))
           )}
         </View>
@@ -131,13 +132,8 @@ export default function DashboardScreen({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  scrollContent: { paddingBottom: 100 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -145,32 +141,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  seeAllText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  cardsList: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: COLORS.muted,
-    marginTop: 20,
-    fontSize: 14,
-  },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    alignItems: 'center',
-  },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: COLORS.text },
+  seeAllText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
+  cardsList: { paddingHorizontal: 20, gap: 12 },
+  emptyText: { textAlign: 'center', color: COLORS.muted, marginTop: 20, fontSize: 14 },
+  fabContainer: { position: 'absolute', bottom: 24, right: 20, alignItems: 'center' },
   fabButton: {
     width: 56,
     height: 56,
@@ -184,11 +159,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 12,
   },
-  fabText: {
-    textAlign: 'center',
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '500',
-    color: COLORS.primary,
-  },
+  fabText: { textAlign: 'center', fontSize: 12, marginTop: 4, fontWeight: '500', color: COLORS.primary },
 });

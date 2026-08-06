@@ -5,16 +5,20 @@ import { auth } from './src/api/firebase';
 import AuthScreen from './src/screens/AuthScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import { COLORS } from './src/constants/theme';
+import ProjectDetailScreen from './src/screens/ProjectDetailScreen';
+import { Project } from './src/types/project';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const handleProjectSelect = () => {
-      console.log('Project selected!');
-    };
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (!currentUser) {
+        setSelectedProject(null); // تصفير المشروع عند تسجيل الخروج
+      }
       setLoading(false);
     });
 
@@ -29,7 +33,30 @@ export default function App() {
     );
   }
 
-  return user ? <DashboardScreen onProjectSelect={handleProjectSelect} /> : <AuthScreen />;
+  // إذا لم يسجل الدخول -> شاشة الدخول
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  // إذا كان مسجلاً واختار مشروعاً -> شاشة التفاصيل
+  if (selectedProject) {
+    return (
+      <ProjectDetailScreen 
+        project={selectedProject} 
+        onBack={() => setSelectedProject(null)} 
+        onCreateTask={() => {
+          
+        }} 
+      />
+    );
+  }
+
+  // افتراضياً -> شاشة Dashboard
+  return (
+    <DashboardScreen 
+      onProjectSelect={(project) => setSelectedProject(project)} 
+    />
+  );
 }
 
 const styles = StyleSheet.create({
