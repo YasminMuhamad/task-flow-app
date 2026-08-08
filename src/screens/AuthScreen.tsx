@@ -31,7 +31,6 @@ const AuthScreen = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const handleAuth = async () => {
-  // تصفية أي خطأ سابق عند الضغط على الزر
   setErrorMessage(null);
 
   // 1. Initial validation

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { doc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { COLORS } from '../../constants/theme';
 import { Project } from '../../types/project';
@@ -11,11 +11,9 @@ interface ProjectCardProps {
   onPress: () => void;
 }
 
-// دالة لحساب الوقت المنقضي بدقة وتنسيقه (مثال: 2h ago, 3d ago)
 const formatTimeAgo = (dateValue?: Timestamp | Date): string => {
   if (!dateValue) return 'Active';
 
-  // تحويل Firebase Timestamp إلى Date عادي لو محتاج
   const date = dateValue instanceof Timestamp ? dateValue.toDate() : new Date(dateValue);
   const now = new Date();
   const secondsAgo = Math.floor((now.getTime() - date.getTime()) / 1000);
@@ -38,7 +36,7 @@ const formatTimeAgo = (dateValue?: Timestamp | Date): string => {
   return `${yearsAgo}y ago`;
 };
 
-// دالة لتوليد لون ثابت بناءً على النص (UID أو Initials)
+// getMemberColor function to generate a color based on the member's initials
 const getMemberColor = (str: string) => {
   const colors = ['#566551', '#C5D5E4', '#8DA68A', '#A8BECE', '#3F4B3C'];
   let hash = 0;
@@ -49,7 +47,7 @@ const getMemberColor = (str: string) => {
   return colors[index];
 };
 
-// دالة لجلب لون الـ Tag ديناميكياً
+// getTagColor function to generate a color based on the tag
 const getTagColor = (tag: string) => {
   switch (tag?.toLowerCase()) {
     case 'design':
@@ -63,9 +61,62 @@ const getTagColor = (tag: string) => {
 
 export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) => {
   const [membersInitials, setMembersInitials] = useState<string[]>([]);
+  
+  // State for task statistics
+  const [taskStats, setTaskStats] = useState({
+    doneCount: 0,
+    totalCount: 0,
+    progress: project.progress || 0,
+  });
+
   const tagColor = getTagColor(project.tag);
 
-  // جلب أول حرفين من أسماء الأعضاء بناءً على memberIds من Firestore
+  // calculate task statistics when the component mounts or when the project changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchProjectTasks = async () => {
+      if (!project.id) return;
+
+      try {
+        const q = query(
+          collection(db, 'tasks'),
+          where('projectId', '==', project.id)
+        );
+        const querySnapshot = await getDocs(q);
+
+        const totalCount = querySnapshot.size;
+        let doneCount = 0;
+
+        querySnapshot.forEach((docSnap) => {
+          if (docSnap.data().status === 'done') {
+            doneCount++;
+          }
+        });
+
+        const computedProgress =
+          totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : project.progress || 0;
+
+        if (isMounted) {
+          setTaskStats({
+            doneCount,
+            totalCount,
+            progress: computedProgress,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching project tasks:', error);
+      }
+    };
+
+    fetchProjectTasks();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [project.id, project.progress]);
+
+  // fetch member initials when the component mounts or when the project changes
   useEffect(() => {
     let isMounted = true;
     const fetchMembers = async () => {
@@ -127,16 +178,16 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) =>
         </View>
       </View>
 
-      {/* Progress */}
+      {/* Progress Dynamic Display */}
       <View style={styles.progressContainer}>
         <View style={styles.progressHeader}>
           <Text style={styles.tasksText}>
-            {project.tasks?.done || 0}/{project.tasks?.total || 0} tasks
+            {taskStats.doneCount}/{taskStats.totalCount} tasks
           </Text>
-          <Text style={styles.progressPercent}>{project.progress}%</Text>
+          <Text style={styles.progressPercent}>{taskStats.progress}%</Text>
         </View>
         <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${project.progress}%` }]} />
+          <View style={[styles.progressBarFill, { width: `${taskStats.progress}%` }]} />
         </View>
       </View>
 
@@ -164,7 +215,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) =>
           )}
         </View>
 
-        {/* عرض الوقت الحقيقي المنقضي من تاريخ إنشائه أو تحديثه */}
         <Text style={styles.updatedText}>
           {project.createdAt ? `Updated ${formatTimeAgo(project.createdAt)}` : 'Active'}
         </Text>

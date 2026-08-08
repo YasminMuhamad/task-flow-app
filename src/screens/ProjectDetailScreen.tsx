@@ -7,22 +7,43 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
+  Modal,
+  TouchableWithoutFeedback,
+  TextInput,
 } from 'react-native';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
-import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from '../api/firebase';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  updateDoc,
+  getDoc,
+  deleteDoc,
+  getDocs,
+  arrayUnion,
+  arrayRemove,
+} from 'firebase/firestore';
+import { auth, db } from '../api/firebase';
 import { COLORS } from '../constants/theme';
 import { Project } from '../types/project';
 import { Task, TaskStatus } from '../types/task';
 import { CreateTaskModal } from '../components/CreateTaskModal';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 interface Props {
   project: Project;
   onBack: () => void;
-  onCreateTask?: () => void;
 }
 
 type FilterTab = 'all' | 'todo' | 'inprogress' | 'done';
+
+interface SearchedUser {
+  id: string;
+  name: string;
+  email: string;
+}
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
   High: { bg: '#FEE2E2', text: '#DC2626' },
@@ -55,41 +76,59 @@ const getInitials = (name: string) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export default function ProjectDetailScreen({ project, onBack, onCreateTask }: Props) {
+export default function ProjectDetailScreen({ project, onBack }: Props) {
   const [filter, setFilter] = useState<FilterTab>('all');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  
   const [modalVisible, setModalVisible] = useState(false);
-  
-  const [membersMap, setMembersMap] = useState<Record<string, { initials: string; name: string }>>({});
+  const [membersMap, setMembersMap] = useState<Record<string, { initials: string; name: string; email?: string }>>({});
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editTitle, setEditTitle] = useState(project.title || '');
+  const [editTag, setEditTag] = useState(project.tag || '');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const [membersModalVisible, setMembersModalVisible] = useState(false);
+  const [searchEmail, setSearchEmail] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [foundUser, setFoundUser] = useState<SearchedUser | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [memberActionLoading, setMemberActionLoading] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    const fetchMembersInfo = async () => {
-      if (!project.memberIds || project.memberIds.length === 0) return;
-
-      const map: Record<string, { initials: string; name: string }> = {};
-      for (const uid of project.memberIds) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            map[uid] = {
-              initials: getInitials(data.fullName || 'User'),
-              name: data.fullName || 'User',
-            };
-          } else {
-            map[uid] = { initials: 'U', name: 'User' };
-          }
-        } catch {
-          map[uid] = { initials: 'U', name: 'User' };
-        }
-      }
-      setMembersMap(map);
-    };
-
     fetchMembersInfo();
   }, [project.memberIds]);
+
+  const fetchMembersInfo = async () => {
+    if (!project.memberIds || project.memberIds.length === 0) {
+      setMembersMap({});
+      return;
+    }
+
+    const map: Record<string, { initials: string; name: string; email?: string }> = {};
+    for (const uid of project.memberIds) {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          map[uid] = {
+            initials: getInitials(data.fullName || 'User'),
+            name: data.fullName || 'User',
+            email: data.email || '',
+          };
+        } else {
+          map[uid] = { initials: 'U', name: 'User', email: '' };
+        }
+      } catch {
+        map[uid] = { initials: 'U', name: 'User', email: '' };
+      }
+    }
+    setMembersMap(map);
+  };
 
   useEffect(() => {
     setLoadingTasks(true);
@@ -144,10 +183,146 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
   const doneCount = tasks.filter((t) => t.status === 'done').length;
   const computedProgress = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : project.progress || 0;
 
-  const handleOpenModal = () => {
-    if (onCreateTask) onCreateTask();
-    setModalVisible(true);
+  const currentUserId = auth.currentUser?.uid;
+  const isOwner = project.createdBy === currentUserId;
+
+  const handleMenuAction = (action: string) => {
+    setMenuVisible(false);
+    switch (action) {
+      case 'edit':
+        setEditModalVisible(true);
+        break;
+      case 'members':
+        setMembersModalVisible(true);
+        break;
+      case 'delete':
+        setDeleteConfirmVisible(true);
+        break;
+    }
   };
+
+  const handleDeleteProject = async () => {
+    try {
+      setIsDeleting(true);
+      const tasksQuery = query(collection(db, 'tasks'), where('projectId', '==', project.id));
+      const tasksSnapshot = await getDocs(tasksQuery);
+      const deletePromises = tasksSnapshot.docs.map((taskDoc) => deleteDoc(taskDoc.ref));
+      await Promise.all(deletePromises);
+
+      await deleteDoc(doc(db, 'projects', project.id));
+
+      setIsDeleting(false);
+      setDeleteConfirmVisible(false);
+      onBack();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      setIsDeleting(false);
+    }
+  };
+
+  const handleUpdateProject = async () => {
+    if (!editTitle.trim()) return;
+    try {
+      setIsUpdating(true);
+      const projectRef = doc(db, 'projects', project.id);
+      await updateDoc(projectRef, {
+        title: editTitle.trim(),
+        tag: editTag.trim() || 'General',
+      });
+      project.title = editTitle.trim();
+      project.tag = editTag.trim() || 'General';
+      setIsUpdating(false);
+      setEditModalVisible(false);
+    } catch (error) {
+      console.error('Error updating project:', error);
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSearchUser = async (text: string) => {
+    setSearchEmail(text);
+    const trimmed = text.trim().toLowerCase();
+
+    if (!trimmed) {
+      setFoundUser(null);
+      setNotFound(false);
+      return;
+    }
+
+    setSearching(true);
+    setNotFound(false);
+    setFoundUser(null);
+
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', trimmed));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        const data = userDoc.data();
+        setFoundUser({
+          id: userDoc.id,
+          name: data.fullName || 'User',
+          email: data.email || trimmed,
+        });
+        setNotFound(false);
+      } else {
+        setFoundUser(null);
+        setNotFound(true);
+      }
+    } catch (error) {
+      console.error('Error searching user:', error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleAddMember = async (userId: string) => {
+    try {
+      setMemberActionLoading(true);
+      const projectRef = doc(db, 'projects', project.id);
+      await updateDoc(projectRef, {
+        memberIds: arrayUnion(userId),
+      });
+
+      if (!project.memberIds.includes(userId)) {
+        project.memberIds.push(userId);
+      }
+
+      await fetchMembersInfo();
+      setSearchEmail('');
+      setFoundUser(null);
+      setNotFound(false);
+    } catch (error) {
+      console.error('Error adding member:', error);
+    } finally {
+      setMemberActionLoading(false);
+    }
+  };
+
+  const handleConfirmRemoveMember = async () => {
+  if (!memberToDelete) return;
+
+  try {
+    setMemberActionLoading(true);
+    const projectRef = doc(db, 'projects', project.id);
+    await updateDoc(projectRef, {
+      memberIds: arrayRemove(memberToDelete.id),
+    });
+
+    const index = project.memberIds.indexOf(memberToDelete.id);
+    if (index !== -1) {
+      project.memberIds.splice(index, 1);
+    }
+
+    await fetchMembersInfo();
+  } catch (error) {
+    console.error('Error removing member:', error);
+  } finally {
+    setMemberActionLoading(false);
+    setMemberToDelete(null);
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -167,13 +342,47 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.8}>
-            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <Circle cx="8" cy="3" r="1.2" fill="#fff" />
-              <Circle cx="8" cy="8" r="1.2" fill="#fff" />
-              <Circle cx="8" cy="13" r="1.2" fill="#fff" />
-            </Svg>
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setMenuVisible(true)} activeOpacity={0.8}>
+              <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <Circle cx="8" cy="3" r="1.2" fill="#fff" />
+                <Circle cx="8" cy="8" r="1.2" fill="#fff" />
+                <Circle cx="8" cy="13" r="1.2" fill="#fff" />
+              </Svg>
+            </TouchableOpacity>
+
+            {/* Modal list */}
+            <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+  <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+    <View style={styles.overlay}>
+      <View style={styles.menuContainer}>
+        
+        {/* Geusts might view members only */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('members')}>
+      <Text style={styles.menuText}>Manage Members</Text>
+    </TouchableOpacity>
+
+        {/* Owner options */}
+        {isOwner && (
+      <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('edit')}>
+        <Text style={styles.menuText}>Edit Project</Text>
+      </TouchableOpacity>
+    )}
+{isOwner && (
+      <>
+        <View style={styles.divider} />
+        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('delete')}>
+          <Text style={[styles.menuText, { color: '#DC2626' }]}>Delete Project</Text>
+        </TouchableOpacity>
+      </>
+    )}
+    
+
+      </View>
+    </View>
+  </TouchableWithoutFeedback>
+</Modal>
+          </View>
         </View>
 
         {/* Members + Progress */}
@@ -278,7 +487,6 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
                   ]}
                 >
                   <View style={{ flexDirection: 'row', gap: 12 }}>
-                    {/* Checkbox Button */}
                     <TouchableOpacity
                       onPress={() => toggleStatus(task.id, status)}
                       style={[
@@ -294,7 +502,6 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
                       )}
                     </TouchableOpacity>
 
-                    {/* Task Info */}
                     <View style={{ flex: 1 }}>
                       <Text
                         style={[
@@ -306,7 +513,6 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
                       </Text>
 
                       <View style={styles.taskMetaRow}>
-                        {/* Assignee */}
                         <View style={styles.metaItem}>
                           <View style={styles.assigneeAvatar}>
                             <Text style={styles.assigneeAvatarText}>{assigneeInfo.initials}</Text>
@@ -316,7 +522,6 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
 
                         <Text style={{ color: '#CBD5E1' }}>·</Text>
 
-                        {/* Due Date */}
                         <View
                           style={[
                             styles.dueDateBadge,
@@ -332,14 +537,12 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
                           </Text>
                         </View>
 
-                        {/* Priority */}
                         <View style={[styles.priorityPill, { backgroundColor: pColor.bg }]}>
                           <Text style={[styles.priorityText, { color: pColor.text }]}>
                             {priority}
                           </Text>
                         </View>
 
-                        {/* Status Toggle Pill */}
                         <TouchableOpacity
                           onPress={() => toggleStatus(task.id, status)}
                           style={[
@@ -371,7 +574,7 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
 
       {/* Footer / Add Task Button */}
       <View style={styles.footerContainer}>
-        <TouchableOpacity onPress={handleOpenModal} style={styles.addTaskBtn} activeOpacity={0.9}>
+        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addTaskBtn} activeOpacity={0.9}>
           <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <Path d="M8 3v10M3 8h10" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
           </Svg>
@@ -383,10 +586,179 @@ export default function ProjectDetailScreen({ project, onBack, onCreateTask }: P
         visible={modalVisible}
         projectId={project.id}
         onClose={() => setModalVisible(false)}
-        onTaskCreated={() => {
-          setModalVisible(false);
-        }}
+        onTaskCreated={() => setModalVisible(false)}
       />
+
+      {/* Modal Manage Members */}
+      <Modal
+        visible={membersModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMembersModalVisible(false)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={styles.dialogContainer}>
+            <Text style={styles.dialogTitle}>Manage Members</Text>
+
+            <Text style={styles.inputLabel}>Search by Email</Text>
+            <View style={styles.searchBoxContainer}>
+              <TextInput
+                style={styles.modalInputSearch}
+                value={searchEmail}
+                onChangeText={handleSearchUser}
+                placeholder="Enter user email..."
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+              {searching && <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchSpinner} />}
+            </View>
+
+            {notFound && (
+              <Text style={styles.notFoundText}>User not found</Text>
+            )}
+
+            {foundUser && (
+              <View style={styles.selectCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.selectName}>{foundUser.name}</Text>
+                  <Text style={styles.selectEmail}>{foundUser.email}</Text>
+                </View>
+                {project.memberIds?.includes(foundUser.id) ? (
+                  <Text style={styles.alreadyAddedText}>Already added</Text>
+                ) : (
+                  // All users can add members to the project
+                  <TouchableOpacity
+                    style={styles.addMemberBtn}
+                    onPress={() => handleAddMember(foundUser.id)}
+                    disabled={memberActionLoading}
+                  >
+                    {memberActionLoading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.addMemberBtnText}>Add</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* Project Current Members List */}
+            <Text style={[styles.inputLabel, { marginTop: 16 }]}>Project Members ({project.memberIds?.length || 0})</Text>
+            <ScrollView style={styles.membersListScroll} nestedScrollEnabled>
+              {project.memberIds?.map((uid) => {
+  const info = membersMap[uid] || { initials: 'U', name: 'User' };
+  const isThisMemberOwner = uid === project.createdBy;
+
+  return (
+    <View key={uid} style={styles.memberRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.memberName}>
+          {info.name} {isThisMemberOwner ? '(Owner)' : ''}
+        </Text>
+      </View>
+
+      {/* Only owner can delete members */}
+      {isOwner && !isThisMemberOwner && (
+        <TouchableOpacity
+          onPress={() => setMemberToDelete({ id: uid, name: info.name })}
+          style={styles.removeMemberBtn}
+        >
+          <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <Path d="M3 3l8 8M11 3l-8 8" stroke="#DC2626" strokeWidth="1.8" strokeLinecap="round" />
+          </Svg>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+})}
+            </ScrollView>
+
+            <View style={styles.dialogActions}>
+              <TouchableOpacity
+                style={[styles.dialogBtn, styles.cancelBtn]}
+                onPress={() => {
+                  setMembersModalVisible(false);
+                  setSearchEmail('');
+                  setFoundUser(null);
+                  setNotFound(false);
+                }}
+              >
+                <Text style={styles.cancelBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Confirmation Modal */}
+      <ConfirmationModal
+        visible={deleteConfirmVisible}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${project.title}"? All associated tasks will be permanently removed.`}
+        confirmText="Delete"
+        confirmBtnColor="#DC2626"
+        loading={isDeleting}
+        onConfirm={handleDeleteProject}
+        onCancel={() => setDeleteConfirmVisible(false)}
+      />
+      <ConfirmationModal
+        visible={!!memberToDelete}
+        title="Remove Member"
+        message={`Are you sure you want to remove ${memberToDelete?.name || 'this member'} from the project?`}
+        confirmText="Remove"
+        confirmBtnColor="#DC2626"
+        loading={memberActionLoading}
+        onConfirm={handleConfirmRemoveMember}
+        onCancel={() => setMemberToDelete(null)}
+      />
+
+      {/* Custom Edit Project Modal */}
+      <Modal visible={editModalVisible} transparent animationType="fade" onRequestClose={() => setEditModalVisible(false)}>
+        <View style={styles.modalOverlayCenter}>
+          <View style={styles.dialogContainer}>
+            <Text style={styles.dialogTitle}>Edit Project</Text>
+            
+            <Text style={styles.inputLabel}>Title</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="Project Title"
+            />
+
+            <Text style={styles.inputLabel}>Tag</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editTag}
+              onChangeText={setEditTag}
+              placeholder="Tag (e.g., Mobile, Web)"
+            />
+
+            <View style={styles.dialogActions}>
+              <TouchableOpacity
+                style={[styles.dialogBtn, styles.cancelBtn]}
+                onPress={() => setEditModalVisible(false)}
+                disabled={isUpdating}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dialogBtn, styles.saveBtn]}
+                onPress={handleUpdateProject}
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -425,6 +797,39 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 30,
+    paddingRight: 30,
+  },
+  menuContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 6,
+    width: 180,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  menuItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  menuText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1E293B',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 4,
   },
   headerFooter: {
     flexDirection: 'row',
@@ -676,5 +1081,184 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 14,
+  },
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  dialogContainer: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+    maxHeight: '85%',
+  },
+  dialogTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  dialogMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: 14,
+  },
+  dialogBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  cancelBtn: {
+    backgroundColor: '#F1F5F9',
+  },
+  cancelBtnText: {
+    color: '#64748B',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  deleteBtn: {
+    backgroundColor: '#DC2626',
+  },
+  deleteBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  saveBtn: {
+    backgroundColor: COLORS.primary || '#566551',
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 4,
+    marginTop: 8,
+  },
+  modalInput: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1E293B',
+  },
+  searchBoxContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  modalInputSearch: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingRight: 36,
+    fontSize: 14,
+    color: '#1E293B',
+  },
+  searchSpinner: {
+    position: 'absolute',
+    right: 10,
+  },
+  notFoundText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'left',
+  },
+  selectCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+  },
+  selectName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  selectEmail: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  alreadyAddedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  addMemberBtn: {
+    backgroundColor: COLORS.primary || '#566551',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  addMemberBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  membersListScroll: {
+    maxHeight: 180,
+    marginTop: 4,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  memberName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  memberEmail: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  removeMemberBtn: {
+    padding: 6,
   },
 });

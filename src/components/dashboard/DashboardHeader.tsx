@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { doc, getDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
-import { auth, db } from '../../api/firebase'; // تأكدي من ضبط مسار استيراد الفايربيز
+import { auth, db } from '../../api/firebase'; 
 import { COLORS } from '../../constants/theme';
 
 export const DashboardHeader: React.FC = () => {
@@ -14,7 +14,6 @@ export const DashboardHeader: React.FC = () => {
   });
   const [loading, setLoading] = useState<boolean>(true);
 
-  // دالة مساعدة لاستخراج الحروف الأولى من الاسم
   const getInitials = (name: string) => {
     if (!name) return 'U';
     const parts = name.trim().split(' ');
@@ -31,7 +30,6 @@ export const DashboardHeader: React.FC = () => {
       return;
     }
 
-    // 1. جلب بيانات المستخدم (UserProfile)
     const fetchUserData = async () => {
       try {
         const userDocRef = doc(db, 'users', currentUser.uid);
@@ -50,7 +48,6 @@ export const DashboardHeader: React.FC = () => {
 
     fetchUserData();
 
-    // 2. الاستماع اللحظي لإحصائيات المشاريع (Projects count)
     const projectsQuery = query(
       collection(db, 'projects'),
       where('memberIds', 'array-contains', currentUser.uid)
@@ -65,7 +62,6 @@ export const DashboardHeader: React.FC = () => {
       }));
     });
 
-    // 3. الاستماع اللحظي لإحصائيات المهام الخاصة بالمستخدم (Tasks count)
     const tasksQuery = query(
       collection(db, 'tasks'),
       where('assigneeId', '==', currentUser.uid)
@@ -93,7 +89,6 @@ export const DashboardHeader: React.FC = () => {
       setLoading(false);
     });
 
-    // التنظيف عند إلغاء تحميل المكون (Unmount)
     return () => {
       unsubProjects();
       unsubTasks();

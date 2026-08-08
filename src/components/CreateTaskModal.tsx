@@ -164,9 +164,8 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       const currentUser = auth.currentUser;
 
       // convert dueDateText to a valid Date object
-      const parsedDate = new Date(dueDateText);
-      const finalDueDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-
+      const finalDueDate = dueDate || new Date();
+      
       const newTaskData = {
         projectId,
         title: title.trim(),
@@ -320,33 +319,33 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 </View>
 
                 {/* Due Date */}
-<View style={styles.fieldGroup}>
-  <Text style={styles.label}>Due Date</Text>
-  
-  <TouchableOpacity
-    style={styles.dateSelector}
-    activeOpacity={0.7}
-    onPress={() => setShowDatePicker(true)}
-  >
-    <Text style={styles.dateText}>
-      {dueDate.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })}
-    </Text>
-  </TouchableOpacity>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Due Date</Text>
+                  
+                  <TouchableOpacity
+                    style={styles.dateSelector}
+                    activeOpacity={0.7}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Text style={styles.dateText}>
+                      {dueDate.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </Text>
+                  </TouchableOpacity>
 
-  {showDatePicker && (
-    <DateTimePicker
-      value={dueDate}
-      mode="date"
-      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-      minimumDate={new Date()} 
-      onChange={handleDateChange}
-    />
-  )}
-</View>
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={dueDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      minimumDate={new Date()} 
+                      onChange={handleDateChange}
+                    />
+                  )}
+                </View>
 
                 {/* Priority */}
                 <View style={styles.fieldGroup}>
