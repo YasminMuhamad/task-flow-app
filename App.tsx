@@ -17,7 +17,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (!currentUser) {
-        setSelectedProject(null); // تصفير المشروع عند تسجيل الخروج
+        setSelectedProject(null);
       }
       setLoading(false);
     });
@@ -33,25 +33,19 @@ export default function App() {
     );
   }
 
-  // إذا لم يسجل الدخول -> شاشة الدخول
   if (!user) {
     return <AuthScreen />;
   }
 
-  // إذا كان مسجلاً واختار مشروعاً -> شاشة التفاصيل
   if (selectedProject) {
     return (
       <ProjectDetailScreen 
         project={selectedProject} 
         onBack={() => setSelectedProject(null)} 
-        onCreateTask={() => {
-          
-        }} 
       />
     );
   }
 
-  // افتراضياً -> شاشة Dashboard
   return (
     <DashboardScreen 
       onProjectSelect={(project) => setSelectedProject(project)} 

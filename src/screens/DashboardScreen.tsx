@@ -19,7 +19,6 @@ import { CreateProjectModal } from '../components/dashboard/CreateProjectModal';
 import { Project } from '../types/project';
 
 interface Props {
-  // 👈 تم التحديث ليقبل كائن المشروع المحدد
   onProjectSelect?: (project: Project) => void;
 }
 
@@ -98,7 +97,7 @@ export default function DashboardScreen({
               <ProjectCard 
                 key={p.id} 
                 project={p} 
-                onPress={() => onProjectSelect(p)} // 👈 تمرير المشروع المحدد عند الضغط
+                onPress={() => onProjectSelect(p)}
               />
             ))
           )}
