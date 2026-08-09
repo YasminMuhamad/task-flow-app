@@ -5,12 +5,12 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
   TouchableWithoutFeedback,
   TextInput,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import {
   collection,
@@ -75,8 +75,9 @@ const getInitials = (name: string) => {
   }
   return name.slice(0, 2).toUpperCase();
 };
-
 export default function ProjectDetailScreen({ project, onBack }: Props) {
+const insets = useSafeAreaInsets();
+
   const [filter, setFilter] = useState<FilterTab>('all');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -325,9 +326,9 @@ export default function ProjectDetailScreen({ project, onBack }: Props) {
 };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={onBack} style={styles.iconBtn} activeOpacity={0.8}>
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -353,35 +354,34 @@ export default function ProjectDetailScreen({ project, onBack }: Props) {
 
             {/* Modal list */}
             <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-  <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-    <View style={styles.overlay}>
-      <View style={styles.menuContainer}>
-        
-        {/* Geusts might view members only */}
-        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('members')}>
-      <Text style={styles.menuText}>Manage Members</Text>
-    </TouchableOpacity>
+              <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+                <View style={styles.overlay}>
+                  <View style={styles.menuContainer}>
+                    
+                    {/* Geusts might view members only */}
+                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('members')}>
+                      <Text style={styles.menuText}>Manage Members</Text>
+                    </TouchableOpacity>
 
-        {/* Owner options */}
-        {isOwner && (
-      <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('edit')}>
-        <Text style={styles.menuText}>Edit Project</Text>
-      </TouchableOpacity>
-    )}
-{isOwner && (
-      <>
-        <View style={styles.divider} />
-        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('delete')}>
-          <Text style={[styles.menuText, { color: '#DC2626' }]}>Delete Project</Text>
-        </TouchableOpacity>
-      </>
-    )}
-    
+                    {/* Owner options */}
+                    {isOwner && (
+                      <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('edit')}>
+                        <Text style={styles.menuText}>Edit Project</Text>
+                      </TouchableOpacity>
+                    )}
+                    {isOwner && (
+                      <>
+                        <View style={styles.divider} />
+                        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('delete')}>
+                          <Text style={[styles.menuText, { color: '#DC2626' }]}>Delete Project</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
 
-      </View>
-    </View>
-  </TouchableWithoutFeedback>
-</Modal>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </Modal>
           </View>
         </View>
 
@@ -572,8 +572,13 @@ export default function ProjectDetailScreen({ project, onBack }: Props) {
         </ScrollView>
       )}
 
-      {/* Footer / Add Task Button */}
-      <View style={styles.footerContainer}>
+{/* Footer / Add Task Button */}
+      <View 
+        style={[
+          styles.footerContainer, 
+          { paddingBottom: Math.max(insets.bottom, 16) }
+        ]}
+      >
         <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addTaskBtn} activeOpacity={0.9}>
           <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <Path d="M8 3v10M3 8h10" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
@@ -759,7 +764,7 @@ export default function ProjectDetailScreen({ project, onBack }: Props) {
         </View>
       </Modal>
 
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -771,7 +776,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: COLORS.primary || '#566551',
     paddingHorizontal: 20,
-    paddingTop: 12,
+    // paddingTop: 12,
     paddingBottom: 16,
   },
   headerTop: {
@@ -1064,7 +1069,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    // paddingBottom: 20,
     paddingTop: 12,
     backgroundColor: '#F8F9FA',
   },
