@@ -6,10 +6,6 @@ export interface Project {
   desc?: string;
   progress: number;
   memberIds: string[];
-  tasks: {
-    total: number;
-    done: number;
-  };
   tag: string;
   createdAt?: Timestamp | Date;
   createdBy?: string;

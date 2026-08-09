@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { doc, getDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
 import { auth, db } from '../../api/firebase'; 
 import { COLORS } from '../../constants/theme';
 
-export const DashboardHeader: React.FC = () => {
+interface Props {
+  onProfileSelect: () => void;
+}
+
+export const DashboardHeader: React.FC<Props> = ({ onProfileSelect }) => {
   const [userName, setUserName] = useState<string>('User');
   const [userInitials, setUserInitials] = useState<string>('U');
   const [stats, setStats] = useState({
@@ -112,13 +116,17 @@ export const DashboardHeader: React.FC = () => {
         </View>
 
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            {loading ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <Text style={styles.avatarText}>{userInitials}</Text>
-            )}
-          </View>
+          <TouchableOpacity 
+      style={styles.avatar}
+      onPress={() => onProfileSelect()}
+      activeOpacity={0.7}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={COLORS.white} />
+      ) : (
+        <Text style={styles.avatarText}>{userInitials}</Text>
+      )}
+    </TouchableOpacity>
           <View style={styles.onlineBadge} />
         </View>
       </View>

@@ -5,9 +5,9 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '../api/firebase';
@@ -20,10 +20,12 @@ import { Project } from '../types/project';
 
 interface Props {
   onProjectSelect?: (project: Project) => void;
+  onProfileSelect: () => void;
 }
 
 export default function DashboardScreen({
   onProjectSelect = () => {},
+  onProfileSelect,
 }: Props) {
   const [active, setActive] = useState<FilterTab>('all');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -73,7 +75,7 @@ export default function DashboardScreen({
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <DashboardHeader />
+        <DashboardHeader onProfileSelect={onProfileSelect} />
 
         {/* Filter tabs */}
         <FilterTabs activeTab={active} onTabChange={setActive} />
