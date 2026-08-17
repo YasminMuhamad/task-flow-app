@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   View,
@@ -14,7 +14,8 @@ import {
   ScrollView,
 } from 'react-native';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { db, auth } from '../../api/firebase';
+import { db } from '../../api/firebase';
+import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
 
 interface UserMember {
@@ -39,20 +40,13 @@ const getMemberColor = (str: string) => {
   return colors[index];
 };
 
-const getInitials = (name: string) => {
-  if (!name) return 'U';
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-};
-
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   visible,
   onClose,
   onProjectCreated,
 }) => {
+  const { user, getInitials } = useApp();
+
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [tag, setTag] = useState('Design');
@@ -86,8 +80,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
     const cleanEmail = text.trim().toLowerCase();
     if (!cleanEmail || cleanEmail.length < 3) return; 
-    const currentUser = auth.currentUser;
-    if (currentUser && currentUser.email?.toLowerCase() === cleanEmail) {
+
+    if (user && user.email?.toLowerCase() === cleanEmail) {
       setMemberError('You are already the project creator.');
       return;
     }
@@ -124,8 +118,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }
   };
 
-  const handleSelectSuggestedUser = (user: UserMember) => {
-    setSelectedMembers((prev) => [...prev, user]);
+  const handleSelectSuggestedUser = (selectedUser: UserMember) => {
+    setSelectedMembers((prev) => [...prev, selectedUser]);
     setSearchEmail('');
     setSuggestedUser(null);
     setMemberError(null);
@@ -143,8 +137,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       return;
     }
 
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
+    if (!user) {
       setError('You must be logged in to create a project.');
       return;
     }
@@ -152,7 +145,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     setLoading(true);
     try {
       const memberIds = Array.from(
-        new Set([currentUser.uid, ...selectedMembers.map((m) => m.uid)])
+        new Set([user.uid, ...selectedMembers.map((m) => m.uid)])
       );
 
       await addDoc(collection(db, 'projects'), {
@@ -165,7 +158,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           total: 0,
           done: 0,
         },
-        createdBy: currentUser.uid,
+        createdBy: user.uid,
         createdAt: serverTimestamp(),
       });
 
@@ -280,13 +273,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                             { backgroundColor: getMemberColor(suggestedUser.uid) },
                           ]}
                         >
+                          {/* 👈 استخدام getInitials الجاهزة */}
                           <Text style={styles.avatarText}>{getInitials(suggestedUser.fullName)}</Text>
                         </View>
                         <View style={styles.suggestionInfo}>
                           <Text style={styles.suggestionName}>{suggestedUser.fullName}</Text>
                           <Text style={styles.suggestionEmail}>{suggestedUser.email}</Text>
                         </View>
-                        {/* <Text style={styles.addTextBadge}>+ Add</Text> */}
                       </TouchableOpacity>
                     )}
 
@@ -299,6 +292,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   <View style={styles.membersRow}>
                     {selectedMembers.map((member) => {
                       const avatarBg = getMemberColor(member.uid);
+                      // 👈 استخدام getInitials الجاهزة
                       const initials = getInitials(member.fullName);
 
                       return (
@@ -360,7 +354,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     elevation: 5,
-    maxHeight: '85%',
+    maxHeight: '100%',
   },
   modalTitle: {
     fontSize: 18,
@@ -453,7 +447,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
   },
-  /* 🌟 Suggesion Dropdown Card Styles */
   suggestionCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -488,11 +481,6 @@ const styles = StyleSheet.create({
   suggestionEmail: {
     fontSize: 11,
     color: COLORS.muted,
-  },
-  addTextBadge: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: COLORS.primary,
   },
   memberErrorText: {
     color: '#E53E3E',

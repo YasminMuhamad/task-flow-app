@@ -1,32 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
-import { 
-  doc, 
-  getDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs 
-} from 'firebase/firestore';
-import { db, auth } from '../api/firebase';
 
-import { UserProfile } from '../types/user';
-import { Project } from '../types/project';
-import { Task } from '../types/task';
+// 1. استيراد Context
+import { useApp } from '../context/AppContext';
 
 interface ProfileScreenProps {
-  userId?: string;
-  initialProfile?: UserProfile | null;
-  initialProjects?: Project[];
-  initialTasks?: Task[];
   onBack?: () => void;
   onEditProfile?: () => void;
   onLogout?: () => void;
@@ -35,65 +22,17 @@ interface ProfileScreenProps {
 }
 
 export default function ProfileScreen({
-  userId,
-  initialProfile,
-  initialProjects = [],
-  initialTasks = [],
   onBack,
   onEditProfile,
   onLogout,
   onSecurityPress,
   onHelpPress,
 }: ProfileScreenProps) {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(initialProfile || null);
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  
+  // 2. سحب البيانات والدوال التلقائية من AppContext
+  const { user, profileData, userProjects, userTasks, loading, logout } = useApp();
+
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
-
-  const currentUid = userId || auth.currentUser?.uid;
-
-  useEffect(() => {
-    if (!currentUid) return;
-
-    const refreshProfileData = async () => {
-      try {
-        const userDocRef = doc(db, 'users', currentUid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          setUserProfile({ uid: currentUid, ...userDocSnap.data() } as UserProfile);
-        }
-
-        const projectsRef = collection(db, 'projects');
-        const projectsQuery = query(
-          projectsRef, 
-          where('memberIds', 'array-contains', currentUid)
-        );
-        const projectsSnap = await getDocs(projectsQuery);
-        const fetchedProjects = projectsSnap.docs.map(
-          doc => ({ id: doc.id, ...doc.data() } as Project)
-        );
-        setProjects(fetchedProjects);
-
-        const tasksRef = collection(db, 'tasks');
-        const tasksQuery = query(
-          tasksRef, 
-          where('assigneeId', '==', currentUid)
-        );
-        const tasksSnap = await getDocs(tasksQuery);
-        const fetchedTasks = tasksSnap.docs.map(
-          doc => ({ id: doc.id, ...doc.data() } as Task)
-        );
-        setTasks(fetchedTasks);
-
-      } catch (error) {
-        console.error("Background sync error in ProfileScreen:", error);
-      }
-    };
-
-    refreshProfileData();
-  }, [currentUid]);
 
   const getInitials = (name?: string) => {
     if (!name) return 'U';
@@ -104,14 +43,25 @@ export default function ProfileScreen({
     return name.slice(0, 2).toUpperCase();
   };
 
-  const tasksDoneCount = tasks.filter(t => t.status === 'done').length;
-  const pendingTasksCount = tasks.filter(t => t.status === 'todo' || t.status === 'inprogress').length;
+  // 3. حساب الإحصائيات من المجموعات الحية المجلوبة من AppContext
+  const tasksDoneCount = userTasks.filter((t) => t.status === 'done').length;
+  const pendingTasksCount = userTasks.filter(
+    (t) => t.status === 'todo' || t.status === 'inprogress'
+  ).length;
 
   const stats = [
-    { n: String(projects.length), l: 'Projects' },
+    { n: String(userProjects.length), l: 'Projects' },
     { n: String(tasksDoneCount), l: 'Tasks done' },
     { n: String(pendingTasksCount), l: 'Pending' },
   ];
+
+  const handleLogout = async () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      await logout();
+    }
+  };
 
   const menuItems = [
     {
@@ -127,7 +77,7 @@ export default function ProfileScreen({
       ),
       label: 'Notifications',
       sub: notificationsEnabled ? 'All alerts on' : 'Muted',
-      action: () => setNotificationsEnabled(prev => !prev),
+      action: () => setNotificationsEnabled((prev) => !prev),
       isToggle: true,
       toggleValue: notificationsEnabled,
     },
@@ -145,7 +95,7 @@ export default function ProfileScreen({
       ),
       label: 'Theme',
       sub: isDarkTheme ? 'Dark' : 'Light',
-      action: () => setIsDarkTheme(prev => !prev),
+      action: () => setIsDarkTheme((prev) => !prev),
       isToggle: true,
       toggleValue: isDarkTheme,
     },
@@ -195,13 +145,20 @@ export default function ProfileScreen({
     },
   ];
 
-  const jobTitle = userProfile?.jobTitle || 'Job Title';
-  const company = userProfile?.company || 'Company';
+  const jobTitle = profileData?.jobTitle || 'Job Title';
+  const company = profileData?.company || 'Company';
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.loadingCenter]}>
+        <ActivityIndicator size="large" color="#566551" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -215,9 +172,9 @@ export default function ProfileScreen({
               />
             </Svg>
           </TouchableOpacity>
-          
+
           <Text style={styles.headerTitle}>My Account</Text>
-          
+
           <TouchableOpacity onPress={onEditProfile} style={styles.editBadge}>
             <Text style={styles.editBadgeText}>Edit</Text>
           </TouchableOpacity>
@@ -228,7 +185,7 @@ export default function ProfileScreen({
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {getInitials(userProfile?.fullName)}
+                {getInitials(profileData?.fullName || user?.displayName || '')}
               </Text>
             </View>
             <View style={styles.statusDot} />
@@ -246,12 +203,12 @@ export default function ProfileScreen({
           </View>
 
           <Text style={styles.userName}>
-            {userProfile?.fullName || auth.currentUser?.displayName || 'User Name'}
+            {profileData?.fullName || user?.displayName || 'User Name'}
           </Text>
           <Text style={styles.userEmail}>
-            {userProfile?.email || auth.currentUser?.email || 'user@example.com'}
+            {profileData?.email || user?.email || 'user@example.com'}
           </Text>
-          
+
           <View style={styles.roleBadge}>
             <Text style={styles.roleBadgeText}>
               {`${jobTitle} · ${company}`}
@@ -283,7 +240,7 @@ export default function ProfileScreen({
                 ]}
               >
                 <View style={styles.iconWrapper}>{item.icon}</View>
-                
+
                 <View style={styles.menuTextContainer}>
                   <Text style={styles.menuLabel}>{item.label}</Text>
                   <Text style={styles.menuSub}>{item.sub}</Text>
@@ -319,7 +276,7 @@ export default function ProfileScreen({
           </View>
 
           {/* Logout Button */}
-          <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <View style={[styles.iconWrapper, { backgroundColor: '#FEE2E2' }]}>
               <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <Path
@@ -345,7 +302,6 @@ export default function ProfileScreen({
 
           <Text style={styles.footerText}>Kora v2.1.0 · Made with ♥</Text>
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -355,6 +311,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  loadingCenter: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollContent: {
     flexGrow: 1,

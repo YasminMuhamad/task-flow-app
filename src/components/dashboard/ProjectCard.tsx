@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { doc, getDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../../api/firebase';
+import { Timestamp } from 'firebase/firestore';
+import { useApp } from '../../context/AppContext'; // اضبط المسار حسب هيكلة مشروعك
 import { COLORS } from '../../constants/theme';
 import { Project } from '../../types/project';
 
@@ -36,7 +36,6 @@ const formatTimeAgo = (dateValue?: Timestamp | Date): string => {
   return `${yearsAgo}y ago`;
 };
 
-// getMemberColor function to generate a color based on the member's initials
 const getMemberColor = (str: string) => {
   const colors = ['#566551', '#C5D5E4', '#8DA68A', '#A8BECE', '#3F4B3C'];
   let hash = 0;
@@ -47,7 +46,6 @@ const getMemberColor = (str: string) => {
   return colors[index];
 };
 
-// getTagColor function to generate a color based on the tag
 const getTagColor = (tag: string) => {
   switch (tag?.toLowerCase()) {
     case 'design':
@@ -60,97 +58,38 @@ const getTagColor = (tag: string) => {
 };
 
 export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) => {
-  const [membersInitials, setMembersInitials] = useState<string[]>([]);
-  
-  // State for task statistics
-  const [taskStats, setTaskStats] = useState({
-    doneCount: 0,
-    totalCount: 0,
-    progress: project.progress || 0,
-  });
+  const { allProjectTasks, usersMap } = useApp();
+
+  // 1. حساب إحصائيات المهام لحظياً وبدون أي طلبات شبكية
+  const taskStats = useMemo(() => {
+    const projectTasks = allProjectTasks.filter((t) => t.projectId === project.id);
+    const totalCount = projectTasks.length;
+    const doneCount = projectTasks.filter((t) => t.status === 'done').length;
+
+    const progress =
+      totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : project.progress || 0;
+
+    return { doneCount, totalCount, progress };
+  }, [allProjectTasks, project.id, project.progress]);
+
+  // 2. استخراج الحروف الأولى للأعضاء من قاموس الأعضاء المخبأ بـ AppContext
+  const membersInitials = useMemo(() => {
+    if (!project.memberIds || project.memberIds.length === 0) return [];
+
+    return project.memberIds.slice(0, 4).map((uid) => {
+      const userData = usersMap[uid];
+      if (userData?.fullName) {
+        const parts = userData.fullName.trim().split(' ');
+        if (parts.length >= 2) {
+          return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+        }
+        return userData.fullName.substring(0, 2).toUpperCase();
+      }
+      return 'U';
+    });
+  }, [project.memberIds, usersMap]);
 
   const tagColor = getTagColor(project.tag);
-
-  // calculate task statistics when the component mounts or when the project changes
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchProjectTasks = async () => {
-      if (!project.id) return;
-
-      try {
-        const q = query(
-          collection(db, 'tasks'),
-          where('projectId', '==', project.id)
-        );
-        const querySnapshot = await getDocs(q);
-
-        const totalCount = querySnapshot.size;
-        let doneCount = 0;
-
-        querySnapshot.forEach((docSnap) => {
-          if (docSnap.data().status === 'done') {
-            doneCount++;
-          }
-        });
-
-        const computedProgress =
-          totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : project.progress || 0;
-
-        if (isMounted) {
-          setTaskStats({
-            doneCount,
-            totalCount,
-            progress: computedProgress,
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching project tasks:', error);
-      }
-    };
-
-    fetchProjectTasks();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [project.id, project.progress]);
-
-  // fetch member initials when the component mounts or when the project changes
-  useEffect(() => {
-    let isMounted = true;
-    const fetchMembers = async () => {
-      if (!project.memberIds || project.memberIds.length === 0) return;
-
-      try {
-        const fetchedInitials = await Promise.all(
-          project.memberIds.slice(0, 4).map(async (uid) => {
-            const userDoc = await getDoc(doc(db, 'users', uid));
-            if (userDoc.exists()) {
-              const fullName = userDoc.data()?.fullName || 'User';
-              const parts = fullName.trim().split(' ');
-              if (parts.length >= 2) {
-                return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-              }
-              return fullName.substring(0, 2).toUpperCase();
-            }
-            return 'U';
-          })
-        );
-
-        if (isMounted) {
-          setMembersInitials(fetchedInitials);
-        }
-      } catch (error) {
-        console.error('Error fetching member initials:', error);
-      }
-    };
-
-    fetchMembers();
-    return () => {
-      isMounted = false;
-    };
-  }, [project.memberIds]);
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.card}>
