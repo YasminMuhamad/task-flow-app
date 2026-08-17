@@ -8,7 +8,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { COLORS } from '../constants/theme';
@@ -16,7 +17,8 @@ import LogoIcon from '../components/LogoIcon';
 import { auth, db } from '../api/firebase';
 import { 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+  createUserWithEmailAndPassword,
+  updateProfile
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -30,61 +32,65 @@ const AuthScreen = () => {
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    const handleAuth = async () => {
-  setErrorMessage(null);
+  const handleAuth = async () => {
+    Keyboard.dismiss();
+    setErrorMessage(null);
 
-  // 1. Initial validation
-  if (!email.trim() || !password.trim()) {
-    setErrorMessage('Please enter both email and password.');
-    return;
-  }
-
-  if (mode === 'signup' && !fullName.trim()) {
-    setErrorMessage('Please enter your full name.');
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    if (mode === 'signin') {
-      // Sign In logic
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-    } else {
-      // Sign Up logic
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      const user = userCredential.user;
-
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        fullName: fullName.trim(),
-        email: email.trim(),
-        createdAt: serverTimestamp(),
-      });
-    }
-  } catch (error: any) {
-    // Error handling
-    let message = 'An unexpected error occurred. Please try again later.';
-    
-    if (error.code === 'auth/email-already-in-use') {
-      message = 'This email is already in use.';
-    } else if (error.code === 'auth/invalid-email') {
-      message = 'Invalid email address format.';
-    } else if (error.code === 'auth/weak-password') {
-      message = 'Password is too weak (must be at least 6 characters).';
-    } else if (
-      error.code === 'auth/invalid-credential' || 
-      error.code === 'auth/user-not-found' || 
-      error.code === 'auth/wrong-password'
-    ) {
-      message = 'Invalid email or password.';
+    // Initial validation
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage('Please enter both email and password.');
+      return;
     }
 
-    setErrorMessage(message);
-  } finally {
-    setLoading(false);
-  }
-};
+    if (mode === 'signup' && !fullName.trim()) {
+      setErrorMessage('Please enter your full name.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      if (mode === 'signin') {
+        // Sign In logic
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      } else {
+        // Sign Up logic
+        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const user = userCredential.user;
+
+        await updateProfile(user, {
+          displayName: fullName.trim(),
+        });
+
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          fullName: fullName.trim(),
+          email: email.trim(),
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch (error: any) {
+      let message = 'An unexpected error occurred. Please try again later.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        message = 'This email is already in use.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Invalid email address format.';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'Password is too weak (must be at least 6 characters).';
+      } else if (
+        error.code === 'auth/invalid-credential' || 
+        error.code === 'auth/user-not-found' || 
+        error.code === 'auth/wrong-password'
+      ) {
+        message = 'Invalid email or password.';
+      }
+
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+    }
+  };
     
   return (
     <KeyboardAvoidingView
@@ -114,22 +120,23 @@ const AuthScreen = () => {
 
         {/* 2. Auth Card Container */}
         <View style={styles.card}>
-            {/* Custom Error Banner */}
-                {errorMessage ? (
-                <TouchableOpacity 
-                    style={styles.errorBanner} 
-                    onPress={() => setErrorMessage(null)}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.errorBannerText}>{errorMessage}</Text>
-                </TouchableOpacity>
-                ) : null}
+          {/* Custom Error Banner */}
+          {errorMessage ? (
+            <TouchableOpacity 
+              style={styles.errorBanner} 
+              onPress={() => setErrorMessage(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {/* Mode Toggle */}
           <View style={styles.toggleContainer}>
             <TouchableOpacity
               style={[styles.toggleBtn, mode === 'signin' && styles.activeToggleBtn]}
               onPress={() => {
-                setMode('signin')
+                setMode('signin');
                 setErrorMessage(null);
               }}
               activeOpacity={0.8}
@@ -142,7 +149,7 @@ const AuthScreen = () => {
             <TouchableOpacity
               style={[styles.toggleBtn, mode === 'signup' && styles.activeToggleBtn]}
               onPress={() => {
-                setMode('signup')
+                setMode('signup');
                 setErrorMessage(null);
               }}
               activeOpacity={0.8}
@@ -178,6 +185,7 @@ const AuthScreen = () => {
                 placeholderTextColor="#94A3B8"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
                 value={email}
                 onChangeText={(text) => setEmail(text.trim().toLowerCase())}
               />
@@ -201,13 +209,11 @@ const AuthScreen = () => {
                   activeOpacity={0.7}
                 >
                   {showPassword ? (
-                    /* Eye Open Icon */
                     <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                       <Path d="M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6z" />
                     </Svg>
                   ) : (
-                    /* Eye Closed / Off Icon */
                     <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <Path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                       <Path d="M1 1l22 22" />
@@ -225,10 +231,19 @@ const AuthScreen = () => {
             )}
 
             {/* Primary CTA Button */}
-            <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.8} onPress={handleAuth}>
-              <Text style={styles.primaryBtnText}>
-                {mode === 'signin' ? 'Sign In' : 'Create Account'}
-              </Text>
+            <TouchableOpacity 
+              style={[styles.primaryBtn, loading && styles.disabledBtn]} 
+              activeOpacity={0.8} 
+              onPress={handleAuth}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.primaryBtnText}>
+                  {mode === 'signin' ? 'Sign In' : 'Create Account'}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Divider */}
@@ -266,7 +281,10 @@ const AuthScreen = () => {
               <Text style={styles.footerText}>
                 {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
               </Text>
-              <TouchableOpacity onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
+              <TouchableOpacity onPress={() => {
+                setMode(mode === 'signin' ? 'signup' : 'signin');
+                setErrorMessage(null);
+              }}>
                 <Text style={styles.footerLink}>
                   {mode === 'signin' ? 'Sign up' : 'Sign in'}
                 </Text>
@@ -390,7 +408,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.text || '#1E293B',
   },
-  /* Password Wrapper Styles */
   passwordInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -424,6 +441,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
+  },
+  disabledBtn: {
+    opacity: 0.7,
   },
   primaryBtnText: {
     color: '#FFFFFF',
@@ -478,18 +498,18 @@ const styles = StyleSheet.create({
     color: COLORS.primary || '#566551',
   },
   errorBanner: {
-  backgroundColor: '#FEF2F2',
-  borderWidth: 1,
-  borderColor: '#FCA5A5',
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  borderRadius: 12,
-  marginBottom: 16,
-},
-errorBannerText: {
-  color: '#991B1B',
-  fontSize: 13,
-  fontWeight: '500',
-  textAlign: 'center',
-},
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  errorBannerText: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
 });

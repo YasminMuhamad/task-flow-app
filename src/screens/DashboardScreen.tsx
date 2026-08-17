@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,11 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { db, auth } from '../api/firebase';
+
+// 1. استيراد useApp من الـ Context
+import { useApp } from '../context/AppContext';
 import { COLORS } from '../constants/theme';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { FilterTabs, FilterTab } from '../components/dashboard/FilterTabs';
@@ -27,49 +28,20 @@ export default function DashboardScreen({
   onProjectSelect = () => {},
   onProfileSelect,
 }: Props) {
+  // 2. سحب المشاريع وحالة التحميل من الـ Context مباشرة
+  const { userProjects, loading } = useApp();
+  
   const [active, setActive] = useState<FilterTab>('all');
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
-
-  useEffect(() => {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      setLoading(false);
-      return;
-    }
-
-    const q = query(
-      collection(db, 'projects'),
-      where('memberIds', 'array-contains', currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const loadedProjects: Project[] = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as Omit<Project, 'id'>),
-        }));
-
-        loadedProjects.sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
-          return dateB - dateA;
-        });
-
-        setProjects(loadedProjects);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error fetching user projects:', error);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
+  const insets = useSafeAreaInsets();
+  // 3. ترتيب المشاريع (تصاعدياً/تنازلياً) باستخدام useMemo لضمان الأداء وعدم تعديل المصفوفة الأصلية
+  const sortedProjects = useMemo(() => {
+    return [...userProjects].sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [userProjects]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -92,10 +64,10 @@ export default function DashboardScreen({
         <View style={styles.cardsList}>
           {loading ? (
             <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
-          ) : projects.length === 0 ? (
+          ) : sortedProjects.length === 0 ? (
             <Text style={styles.emptyText}>No projects found for you</Text>
           ) : (
-            projects.map((p) => (
+            sortedProjects.map((p) => (
               <ProjectCard 
                 key={p.id} 
                 project={p} 
@@ -111,13 +83,16 @@ export default function DashboardScreen({
         <TouchableOpacity
           onPress={() => setModalVisible(true)}
           activeOpacity={0.9}
-          style={styles.fabButton}
+          style={[
+          styles.fabButton, 
+          { bottom: insets.bottom } 
+        ]}
         >
           <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
             <Path d="M11 4v14M4 11h14" stroke={COLORS.white} strokeWidth="2.5" strokeLinecap="round" />
           </Svg>
         </TouchableOpacity>
-        <Text style={styles.fabText}>New</Text>
+        <Text style={[styles.fabText, { bottom: insets.bottom }]}>New</Text>
       </View>
 
       {/* Create Project Modal */}
@@ -146,7 +121,7 @@ const styles = StyleSheet.create({
   seeAllText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
   cardsList: { paddingHorizontal: 20, gap: 12 },
   emptyText: { textAlign: 'center', color: COLORS.muted, marginTop: 20, fontSize: 14 },
-  fabContainer: { position: 'absolute', bottom: 24, right: 20, alignItems: 'center' },
+  fabContainer: { position: 'absolute', bottom: 10, right: 20, alignItems: 'center' },
   fabButton: {
     width: 56,
     height: 56,

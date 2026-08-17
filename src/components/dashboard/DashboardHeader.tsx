@@ -1,109 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { doc, getDoc, collection, onSnapshot, query, where } from 'firebase/firestore';
-import { auth, db } from '../../api/firebase'; 
+import { useApp } from '../../context/AppContext'; // اضبط المسار حسب هيكلة مشروعك
 import { COLORS } from '../../constants/theme';
 
 interface Props {
   onProfileSelect: () => void;
 }
 
+// دالة الحروف الأولى
+const getInitials = (name?: string) => {
+  if (!name) return 'U';
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+};
+
 export const DashboardHeader: React.FC<Props> = ({ onProfileSelect }) => {
-  const [userName, setUserName] = useState<string>('User');
-  const [userInitials, setUserInitials] = useState<string>('U');
-  const [stats, setStats] = useState({
-    projectsCount: 0,
-    tasksDueCount: 0,
-    completedTasksCount: 0,
-  });
-  const [loading, setLoading] = useState<boolean>(true);
+  // جلب كل البيانات الجاهزة من AppContext
+  const { profileData, userProjects, userTasks, loading } = useApp();
 
-  const getInitials = (name: string) => {
-    if (!name) return 'U';
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  };
+  // حساب الأحرف الأولى
+  const userName = profileData?.fullName || 'User';
+  const userInitials = useMemo(() => getInitials(profileData?.fullName), [profileData?.fullName]);
 
-  useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      setLoading(false);
-      return;
-    }
+  // حساب الإحصائيات فورياً بدون استعلامات شبكة
+  const statsList = useMemo(() => {
+    const projectsCount = userProjects.length;
+    const completedTasksCount = userTasks.filter((t) => t.status === 'done').length;
+    const tasksDueCount = userTasks.length - completedTasksCount;
 
-    const fetchUserData = async () => {
-      try {
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          const fullName = data.fullName || 'User';
-          setUserName(fullName);
-          setUserInitials(getInitials(fullName));
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-      }
-    };
-
-    fetchUserData();
-
-    const projectsQuery = query(
-      collection(db, 'projects'),
-      where('memberIds', 'array-contains', currentUser.uid)
-    );
-
-    const unsubProjects = onSnapshot(projectsQuery, (snapshot) => {
-      const projectsCount = snapshot.size;
-
-      setStats((prev) => ({
-        ...prev,
-        projectsCount,
-      }));
-    });
-
-    const tasksQuery = query(
-      collection(db, 'tasks'),
-      where('assigneeId', '==', currentUser.uid)
-    );
-
-    const unsubTasks = onSnapshot(tasksQuery, (snapshot) => {
-      let due = 0;
-      let completed = 0;
-
-      snapshot.docs.forEach((doc) => {
-        const taskData = doc.data();
-        if (taskData.status === 'done') {
-          completed += 1;
-        } else {
-          due += 1;
-        }
-      });
-
-      setStats((prev) => ({
-        ...prev,
-        tasksDueCount: due,
-        completedTasksCount: completed,
-      }));
-
-      setLoading(false);
-    });
-
-    return () => {
-      unsubProjects();
-      unsubTasks();
-    };
-  }, []);
-
-  const statsList = [
-    { label: 'Projects', val: stats.projectsCount.toString() },
-    { label: 'Tasks Due', val: stats.tasksDueCount.toString() },
-    { label: 'Completed', val: stats.completedTasksCount.toString() },
-  ];
+    return [
+      { label: 'Projects', val: projectsCount.toString() },
+      { label: 'Tasks Due', val: tasksDueCount.toString() },
+      { label: 'Completed', val: completedTasksCount.toString() },
+    ];
+  }, [userProjects, userTasks]);
 
   return (
     <View style={styles.header}>
@@ -116,17 +49,17 @@ export const DashboardHeader: React.FC<Props> = ({ onProfileSelect }) => {
         </View>
 
         <View style={styles.avatarContainer}>
-          <TouchableOpacity 
-      style={styles.avatar}
-      onPress={() => onProfileSelect()}
-      activeOpacity={0.7}
-    >
-      {loading ? (
-        <ActivityIndicator size="small" color={COLORS.white} />
-      ) : (
-        <Text style={styles.avatarText}>{userInitials}</Text>
-      )}
-    </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.avatar}
+            onPress={onProfileSelect}
+            activeOpacity={0.7}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.avatarText}>{userInitials}</Text>
+            )}
+          </TouchableOpacity>
           <View style={styles.onlineBadge} />
         </View>
       </View>
