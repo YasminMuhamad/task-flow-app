@@ -6,6 +6,7 @@ import { AppProvider, useApp } from './src/context/AppContext';
 import AuthScreen from './src/screens/AuthScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ProjectDetailScreen from './src/screens/ProjectDetailScreen';
+import TaskDetailScreen from './src/screens/TaskDetailScreen'; // 👈 استيراد شاشة تفاصيل المهمة
 import ProfileScreen from './src/screens/ProfileScreen';
 import { COLORS } from './src/constants/theme';
 import { Project } from './src/types/project';
@@ -13,13 +14,14 @@ import { Project } from './src/types/project';
 function MainNavigator() {
   const { user, loading, logout } = useApp();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null); // 👈 State لتتبع التاسك المحددة
   const [showProfile, setShowProfile] = useState(false);
 
-  // إعادة تعيين الشاشة للداشبورد عند تغيير حالة المستخدم
   useEffect(() => {
     if (user) {
       setShowProfile(false);
       setSelectedProject(null);
+      setSelectedTaskId(null);
     }
   }, [user]);
 
@@ -42,16 +44,26 @@ function MainNavigator() {
     );
   }
 
+  // 👈 عرض شاشة تفاصيل المهمة إذا تم التحديد
+  if (selectedTaskId) {
+    return (
+      <TaskDetailScreen
+        taskId={selectedTaskId}
+        onBack={() => setSelectedTaskId(null)}
+      />
+    );
+  }
+
   if (selectedProject) {
     return (
       <ProjectDetailScreen 
         project={selectedProject} 
         onBack={() => setSelectedProject(null)} 
+        onTaskSelect={(taskId) => setSelectedTaskId(taskId)} // 👈 ربط الـ Callback هنا
       />
     );
   }
 
-  // الصفحة الافتراضية بعد تسجيل الدخول
   return (
     <DashboardScreen 
       onProjectSelect={(project) => setSelectedProject(project)} 

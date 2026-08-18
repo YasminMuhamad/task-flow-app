@@ -36,6 +36,7 @@ import { useApp } from '../context/AppContext';
 interface Props {
   project: Project;
   onBack: () => void;
+  onTaskSelect: (taskId: string) => void;
 }
 
 type FilterTab = 'all' | 'todo' | 'inprogress' | 'done';
@@ -79,7 +80,7 @@ const formatDueDate = (dateVal: any) => {
   return String(dateVal);
 };
 
-export default function ProjectDetailScreen({ project: initialProject, onBack }: Props) {
+export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect }: Props) {
   const insets = useSafeAreaInsets();
   // 1. استخدام usersMap و getInitials من الـ Context مباشرة دون استعلامات إضافية
   const { user, usersMap, getInitials } = useApp();
@@ -296,19 +297,21 @@ export default function ProjectDetailScreen({ project: initialProject, onBack }:
   };
 
   // 5. دالة renderItem الخاصة بـ FlatList للمهام
-  const renderTaskItem = useCallback(({ item }: { item: Task }) => {
+  // 5. دالة renderItem الخاصة بـ FlatList للمهام
+const renderTaskItem = useCallback(({ item }: { item: Task }) => {
     const status = item.status || 'todo';
     const priority = item.priority || 'Low';
     const pColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.Low;
 
-    // جلب بيانات المسؤول مباشرة من ذاكرة usersMap دون طلبات شبكة
     const assignee = usersMap[item.assigneeId];
     const assigneeName = assignee?.fullName || 'User';
     const assigneeInitials = getInitials(assigneeName);
     const assigneeFirstName = assigneeName.split(' ')[0];
 
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => onTaskSelect(item.id)} // 👈 نداء onTaskSelect مباشرة
         style={[
           styles.taskCard,
           status === 'done' && styles.taskCardDone,
@@ -379,9 +382,9 @@ export default function ProjectDetailScreen({ project: initialProject, onBack }:
             </View>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
-  }, [usersMap, toggleStatus, getInitials]);
+  }, [usersMap, toggleStatus, getInitials, onTaskSelect]); // 💡 متنساش تضيف navigation هنا للـ Dependencies
 
   return (
     <View style={styles.container}>
