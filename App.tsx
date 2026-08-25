@@ -6,22 +6,25 @@ import { AppProvider, useApp } from './src/context/AppContext';
 import AuthScreen from './src/screens/AuthScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import ProjectDetailScreen from './src/screens/ProjectDetailScreen';
-import TaskDetailScreen from './src/screens/TaskDetailScreen'; // 👈 استيراد شاشة تفاصيل المهمة
+import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import ArchivedTasksScreen from './src/screens/ArchivedTasksScreen';
 import { COLORS } from './src/constants/theme';
 import { Project } from './src/types/project';
 
 function MainNavigator() {
   const { user, loading, logout } = useApp();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null); // 👈 State لتتبع التاسك المحددة
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showArchivedTasks, setShowArchivedTasks] = useState(false);
 
   useEffect(() => {
     if (user) {
       setShowProfile(false);
       setSelectedProject(null);
       setSelectedTaskId(null);
+      setShowArchivedTasks(false);
     }
   }, [user]);
 
@@ -44,7 +47,6 @@ function MainNavigator() {
     );
   }
 
-  // 👈 عرض شاشة تفاصيل المهمة إذا تم التحديد
   if (selectedTaskId) {
     return (
       <TaskDetailScreen
@@ -54,12 +56,23 @@ function MainNavigator() {
     );
   }
 
+  if (showArchivedTasks && selectedProject) {
+    return (
+      <ArchivedTasksScreen
+        project={selectedProject}
+        onBack={() => setShowArchivedTasks(false)}
+        onTaskSelect={(taskId) => setSelectedTaskId(taskId.toString())}
+      />
+    );
+  }
+
   if (selectedProject) {
     return (
       <ProjectDetailScreen 
         project={selectedProject} 
         onBack={() => setSelectedProject(null)} 
-        onTaskSelect={(taskId) => setSelectedTaskId(taskId)} // 👈 ربط الـ Callback هنا
+        onTaskSelect={(taskId) => setSelectedTaskId(taskId)}
+        onOpenArchived={() => setShowArchivedTasks(true)}
       />
     );
   }

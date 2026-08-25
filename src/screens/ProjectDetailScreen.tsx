@@ -37,6 +37,7 @@ interface Props {
   project: Project;
   onBack: () => void;
   onTaskSelect: (taskId: string) => void;
+  onOpenArchived: () => void;
 }
 
 type FilterTab = 'all' | 'todo' | 'inprogress' | 'done';
@@ -80,9 +81,8 @@ const formatDueDate = (dateVal: any) => {
   return String(dateVal);
 };
 
-export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect }: Props) {
+export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect, onOpenArchived }: Props) {
   const insets = useSafeAreaInsets();
-  // 1. استخدام usersMap و getInitials من الـ Context مباشرة دون استعلامات إضافية
   const { user, usersMap, getInitials } = useApp();
 
   const [currentProject, setCurrentProject] = useState<Project>(initialProject);
@@ -107,7 +107,6 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   const [memberActionLoading, setMemberActionLoading] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  // الاشتراك اللحظي ببيانات المشروع
   useEffect(() => {
     const projectRef = doc(db, 'projects', initialProject.id);
     const unsubProject = onSnapshot(projectRef, (docSnap) => {
@@ -122,7 +121,6 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     return () => unsubProject();
   }, [initialProject.id]);
 
-  // الاشتراك اللحظي بمهام المشروع
   useEffect(() => {
     setLoadingTasks(true);
     const q = query(collection(db, 'tasks'), where('projectId', '==', currentProject.id));
@@ -139,20 +137,21 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     return () => unsubscribe();
   }, [currentProject.id]);
 
-  // 2. الفلترة مع حفظ النتيجة بـ useMemo
   const filteredTasks = useMemo(() => {
-    if (filter === 'all') return tasks;
-    return tasks.filter((t) => t.status === filter);
+    const activeTasks = tasks.filter((t) => t.archived !== true);
+  
+    if (filter === 'all') return activeTasks;
+  return activeTasks.filter((t) => t.status === filter);
   }, [tasks, filter]);
 
-  // 3. حساب النسبة المئوية مع حفظ النتيجة بـ useMemo
   const computedProgress = useMemo(() => {
-    const totalCount = tasks.length;
-    const doneCount = tasks.filter((t) => t.status === 'done').length;
+    const activeTasks = tasks.filter((t) => t.archived !== true);
+    const totalCount = activeTasks.length;
+    const doneCount = activeTasks.filter((t) => t.status === 'done').length;
+
     return totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : currentProject.progress || 0;
   }, [tasks, currentProject.progress]);
 
-  // 4. تغيير حالة المهمة بدالة مستقرة
   const toggleStatus = useCallback(async (taskId: string, currentStatus: TaskStatus) => {
     const nextStatus: TaskStatus =
       currentStatus === 'todo'
@@ -182,6 +181,9 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
         break;
       case 'delete':
         setDeleteConfirmVisible(true);
+        break;
+      case 'archived':
+        onOpenArchived();
         break;
     }
   };
@@ -296,8 +298,6 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     }
   };
 
-  // 5. دالة renderItem الخاصة بـ FlatList للمهام
-  // 5. دالة renderItem الخاصة بـ FlatList للمهام
 const renderTaskItem = useCallback(({ item }: { item: Task }) => {
     const status = item.status || 'todo';
     const priority = item.priority || 'Low';
@@ -311,7 +311,7 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
     return (
       <TouchableOpacity
         activeOpacity={0.8}
-        onPress={() => onTaskSelect(item.id)} // 👈 نداء onTaskSelect مباشرة
+        onPress={() => onTaskSelect(item.id)}
         style={[
           styles.taskCard,
           status === 'done' && styles.taskCardDone,
@@ -384,7 +384,7 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
         </View>
       </TouchableOpacity>
     );
-  }, [usersMap, toggleStatus, getInitials, onTaskSelect]); // 💡 متنساش تضيف navigation هنا للـ Dependencies
+  }, [usersMap, toggleStatus, getInitials, onTaskSelect]);
 
   return (
     <View style={styles.container}>
@@ -434,6 +434,9 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
                         </TouchableOpacity>
                       </>
                     )}
+                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('archived')}>
+                      <Text style={styles.menuText}>Archived Tasks</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </TouchableWithoutFeedback>
