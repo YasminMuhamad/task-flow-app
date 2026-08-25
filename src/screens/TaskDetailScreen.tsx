@@ -21,10 +21,11 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import * as DocumentPicker from 'expo-document-picker';
-
+import Svg, { Path } from 'react-native-svg';
 import { db } from '../api/firebase';
 import { Task, ChecklistItem, TaskComment, TaskAttachment, TaskStatus, TaskPriority } from '../types/task';
-import { useAppContext } from '../context/AppContext'; // التأكد من المسار الصحيح للـ AppContext
+import { useAppContext } from '../context/AppContext';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 interface Props {
   onBack?: () => void;
@@ -32,11 +33,9 @@ interface Props {
 }
 
 export default function TaskDetailScreen({ onBack, taskId }: Props) {
-  // 1. استهلاك AppContext للبيانات العامة المخبأة
   const { user: currentUser, profileData, userProjects, usersMap, allProjectTasks, getInitials } = useAppContext();
   // States
   const [task, setTask] = useState<Task | null>(() => {
-    // محاولة جلب المهمة فوراً من الـ Context لتقليل أوقات الانتظار
     return allProjectTasks.find((t) => t.id === taskId) || null;
   });
   
@@ -58,11 +57,13 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
   const [editDesc, setEditDesc] = useState<string>('');
   const [updatingTask, setUpdatingTask] = useState<boolean>(false);
 
-  // جلب بيانات المسند إليه بـ O(1) Lookup مباشرة من Context بدلاً من listener منفصل
   const assignee = task?.assigneeId ? usersMap[task.assigneeId] : null;
 
   const currentProject = userProjects?.find((p) => p.id === task?.projectId);
   const projectName = currentProject?.title || currentProject?.title || `Project #${task?.projectId}`;
+
+  const [isArchiveModalVisible, setIsArchiveModalVisible] = useState<boolean>(false);
+  const [archivingTask, setArchivingTask] = useState<boolean>(false);
 
   // 1. Fetch Task Main Info (Realtime Listener للمهمة)
   useEffect(() => {
@@ -168,6 +169,41 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
     }
   };
 
+  // Determine Attachment Icon and Color Based on Type
+  const getAttachmentConfig = (typeStr?: string, fileName?: string) => {
+  const ext = (typeStr || fileName?.split('.').pop() || '').toLowerCase();
+
+  // 1.  (PDF, TXT, DOC, etc)
+  if (['pdf', 'txt', 'doc', 'docx', 'file'].includes(ext)) {
+    return {
+      icon: '📄',
+      color: '#FEE2E2',
+    };
+  }
+
+  // 2. (JPG, PNG, WEBP, GIF, SVG, etc)
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'image'].includes(ext)) {
+    return {
+      icon: '🖼️',
+      color: '#C5D5E4',
+    };
+  }
+
+  // 3. (ZIP, RAR, 7Z)
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return {
+      icon: '📦',
+      color: '#FEF08A',
+    };
+  }
+
+  // 4. any other file types (default)
+  return {
+    icon: '📎',
+    color: '#E2E8F0',
+  };
+};
+
   // Add Comment
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return;
@@ -190,69 +226,76 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
 
   // Upload File Attachment to Cloudinary & Save URL to Firestore Subcollection
   const handleUploadAttachment = async () => {
-    if (!currentUser) return;
+  if (!currentUser) return;
 
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+    });
 
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-      const file = result.assets[0];
-      setUploadingFile(true);
+    const file = result.assets[0];
+    setUploadingFile(true);
 
-      const formData = new FormData();
+    const formData = new FormData();
 
-      if (Platform.OS === 'web') {
+    if (Platform.OS === 'web') {
+      if (file.file) {
+        formData.append('file', file.file);
+      } else {
         const fileResponse = await fetch(file.uri);
         const blob = await fileResponse.blob();
         formData.append('file', blob, file.name || 'upload');
-      } else {
-        formData.append('file', {
-          uri: file.uri,
-          type: file.mimeType || 'application/octet-stream',
-          name: file.name || 'upload',
-        } as any);
       }
+    } else {
+      const cleanUri =
+        Platform.OS === 'android' ? file.uri : file.uri.replace('file://', '');
 
-      const CLOUD_NAME = 'dskzuvxjp';
-      const UPLOAD_PRESET = 'yrwcqwqv';
-
-      formData.append('upload_preset', UPLOAD_PRESET);
-
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
-        {
-          method: 'POST',
-          body: formData,
-        }
-      );
-
-      const cloudinaryData = await response.json();
-
-      if (!response.ok) {
-        console.error('Cloudinary API Error Details:', cloudinaryData);
-        throw new Error(cloudinaryData.error?.message || 'Failed to upload file to Cloudinary');
-      }
-
-      const attachRef = collection(db, 'tasks', taskId, 'attachments');
-      await addDoc(attachRef, {
-        name: file.name,
-        type: file.mimeType?.split('/')[1]?.toUpperCase() || 'FILE',
-        size: `${(file.size ? file.size / (1024 * 1024) : 0).toFixed(1)} MB`,
-        url: cloudinaryData.secure_url,
-        uploadedBy: currentUser.uid,
-        createdAt: serverTimestamp(),
-      });
-
-    } catch (error) {
-      console.error('Error uploading file to Cloudinary:', error);
-    } finally {
-      setUploadingFile(false);
+      formData.append('file', {
+        uri: cleanUri,
+        type: file.mimeType || 'application/octet-stream',
+        name: file.name || `upload_${Date.now()}`,
+      } as any);
     }
-  };
+
+    const CLOUD_NAME = 'dskzuvxjp';
+    const UPLOAD_PRESET = 'yrwcqwqv';
+
+    formData.append('upload_preset', UPLOAD_PRESET);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+
+    const cloudinaryData = await response.json();
+
+    if (!response.ok) {
+      console.error('Cloudinary Error Response:', cloudinaryData);
+      throw new Error(cloudinaryData.error?.message || 'Upload failed');
+    }
+
+    const attachRef = collection(db, 'tasks', taskId, 'attachments');
+    await addDoc(attachRef, {
+      name: file.name,
+      type: file.mimeType?.split('/')[1]?.toUpperCase() || 'FILE',
+      size: `${(file.size ? file.size / (1024 * 1024) : 0).toFixed(1)} MB`,
+      url: cloudinaryData.secure_url,
+      uploadedBy: currentUser.uid,
+      createdAt: serverTimestamp(),
+    });
+
+  } catch (error) {
+    console.error('Error uploading file to Cloudinary:', error);
+  } finally {
+    setUploadingFile(false);
+  }
+};
 
   // Cycle Status
   const handleCycleStatus = async () => {
@@ -324,6 +367,25 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
   const doneCount = checklist.filter((c) => c.done).length;
   const pct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : 0;
 
+ 
+  const handleArchiveTask = async () => {
+    if (!taskId) return;
+    setArchivingTask(true);
+    try {
+      const taskRef = doc(db, 'tasks', taskId);
+      await updateDoc(taskRef, {
+        archived: true,
+        updatedAt: serverTimestamp(),
+      });
+      setIsArchiveModalVisible(false);
+      if (onBack) onBack();
+    } catch (error) {
+      console.error('Error archiving task:', error);
+    } finally {
+      setArchivingTask(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -352,16 +414,43 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.iconBtn} onPress={onBack}>
-          <Text style={styles.iconText}>←</Text>
+          <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <Path
+              d="M10 4L6 8l4 4"
+              stroke="#fff"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
         </TouchableOpacity>
         
-        {/* عرض اسم المشروع بدلاً من الـ ID */}
         <Text style={styles.headerTitle} numberOfLines={1}>
           {projectName}
         </Text>
 
         <TouchableOpacity style={styles.iconBtn} onPress={() => setIsEditModalVisible(true)}>
-          <Text style={styles.iconText}>✏️</Text>
+          <Svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <Path
+              d="M10.5 2.5L12.5 4.5M2 13l2.5-.5L12.5 4.5 10.5 2.5 2.5 10.5 2 13z"
+              stroke="#fff"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.iconBtn} onPress={() => setIsArchiveModalVisible(true)}>
+          <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <Path
+              d="M14 5v8a1 1 0 01-1 1H3a1 1 0 01-1-1V5M1 2h14v3H1V2zM6 8h4"
+              stroke="#fff"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
         </TouchableOpacity>
       </View>
 
@@ -514,21 +603,25 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
             {attachments.length === 0 ? (
               <Text style={styles.emptyText}>No attachments added yet</Text>
             ) : (
-              attachments.map((f) => (
-                <View key={f.id} style={styles.attachmentCard}>
-                  <View style={[styles.fileIconBox, { backgroundColor: '#C5D5E4' }]}>
-                    <Text style={{ fontSize: 16 }}>📄</Text>
+              attachments.map((f) => {
+                const { icon, color } = getAttachmentConfig(f.type, f.name);
+
+                return (
+                  <View key={f.id} style={styles.attachmentCard}>
+                    <View style={[styles.fileIconBox, { backgroundColor: color }]}>
+                      <Text style={{ fontSize: 16 }}>{icon}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fileName} numberOfLines={1}>
+                        {f.name}
+                      </Text>
+                      <Text style={styles.fileMeta}>
+                        {f.type} · {f.size}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.fileName} numberOfLines={1}>
-                      {f.name}
-                    </Text>
-                    <Text style={styles.fileMeta}>
-                      {f.type} · {f.size}
-                    </Text>
-                  </View>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
         </View>
@@ -590,6 +683,17 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
         </TouchableOpacity>
       </View>
 
+{/* Confirmation Modal للأرشفة */}
+<ConfirmationModal
+  visible={isArchiveModalVisible}
+  title="Archive Task"
+  message="Are you sure you want to archive this task? You can access it later in archived tasks."
+  confirmText="Archive"
+  cancelText="Cancel"
+  loading={archivingTask}
+  onConfirm={handleArchiveTask}
+  onCancel={() => setIsArchiveModalVisible(false)}
+/>
       {/* Edit Modal */}
       <Modal visible={isEditModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>

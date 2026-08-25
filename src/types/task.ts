@@ -38,6 +38,7 @@ export interface Task {
   dueDate: Timestamp | Date;
   priority: TaskPriority;
   status: TaskStatus;
+  archived?: boolean;
   checklist?: ChecklistItem[];
   attachments?: TaskAttachment[];
   overdue?: boolean;

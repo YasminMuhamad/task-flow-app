@@ -1,11 +1,9 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { initializeAuth, getAuth } from "firebase/auth";
-import { initializeFirestore, getFirestore, persistentLocalCache } from "firebase/firestore";
+import { initializeFirestore, getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-// React Native Persistence Helper
-const { getReactNativePersistence } = require("firebase/auth") as any;
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -17,12 +15,14 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// 1. Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 2. Initialize Auth Safely
 export const auth = (() => {
   try {
+    if (Platform.OS === 'web') {
+      return getAuth(app);
+    }
+    const { getReactNativePersistence } = require("firebase/auth");
     return initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage),
     });
@@ -31,15 +31,5 @@ export const auth = (() => {
   }
 })();
 
-// 3. Initialize Firestore Safely (يحل مشكلة Uncaught Error)
-export const db = (() => {
-  try {
-    return initializeFirestore(app, {
-      localCache: persistentLocalCache(),
-    });
-  } catch (e) {
-    return getFirestore(app);
-  }
-})();
-
+export const db = getFirestore(app);
 export const storage = getStorage(app);
