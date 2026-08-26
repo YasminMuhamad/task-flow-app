@@ -9,6 +9,7 @@ import ProjectDetailScreen from './src/screens/ProjectDetailScreen';
 import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ArchivedTasksScreen from './src/screens/ArchivedTasksScreen';
+import SearchScreen from './src/screens/SearchScreen'; // 1. Imported SearchScreen
 import { COLORS } from './src/constants/theme';
 import { Project } from './src/types/project';
 
@@ -18,6 +19,7 @@ function MainNavigator() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showArchivedTasks, setShowArchivedTasks] = useState(false);
+  const [showSearch, setShowSearch] = useState(false); // 2. Added state for SearchScreen
 
   useEffect(() => {
     if (user) {
@@ -25,6 +27,7 @@ function MainNavigator() {
       setSelectedProject(null);
       setSelectedTaskId(null);
       setShowArchivedTasks(false);
+      setShowSearch(false);
     }
   }, [user]);
 
@@ -37,6 +40,15 @@ function MainNavigator() {
   }
 
   if (!user) return <AuthScreen />;
+
+  // Render SearchScreen if active
+  if (showSearch) {
+    return (
+      <SearchScreen 
+        onBack={() => setShowSearch(false)} 
+      />
+    );
+  }
 
   if (showProfile) {
     return (
@@ -81,6 +93,7 @@ function MainNavigator() {
     <DashboardScreen 
       onProjectSelect={(project) => setSelectedProject(project)} 
       onProfileSelect={() => setShowProfile(true)}
+      onSearch={() => setShowSearch(true)}
     />
   );
 }

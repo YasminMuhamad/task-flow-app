@@ -10,7 +10,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-// 1. استيراد useApp من الـ Context
 import { useApp } from '../context/AppContext';
 import { COLORS } from '../constants/theme';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
@@ -22,19 +21,19 @@ import { Project } from '../types/project';
 interface Props {
   onProjectSelect?: (project: Project) => void;
   onProfileSelect: () => void;
+  onSearch: () => void; // Added callback prop to open SearchScreen
 }
 
 export default function DashboardScreen({
   onProjectSelect = () => {},
   onProfileSelect,
+  onSearch,
 }: Props) {
-  // 2. سحب المشاريع وحالة التحميل من الـ Context مباشرة
   const { userProjects, loading } = useApp();
   
   const [active, setActive] = useState<FilterTab>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const insets = useSafeAreaInsets();
-  // 3. ترتيب المشاريع (تصاعدياً/تنازلياً) باستخدام useMemo لضمان الأداء وعدم تعديل المصفوفة الأصلية
   const sortedProjects = useMemo(() => {
     return [...userProjects].sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
@@ -47,7 +46,7 @@ export default function DashboardScreen({
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <DashboardHeader onProfileSelect={onProfileSelect} />
+        <DashboardHeader onProfileSelect={onProfileSelect} onSearch={onSearch} />
 
         {/* Filter tabs */}
         <FilterTabs activeTab={active} onTabChange={setActive} />

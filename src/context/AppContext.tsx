@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, collection, query, where, onSnapshot, documentId } from 'firebase/firestore';
+import { doc, collection, query, where, onSnapshot, documentId, collectionGroup } from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
 import { UserProfile } from '../types/user';
 import { Project } from '../types/project';
-import { Task } from '../types/task';
+import { Task, TaskAttachment } from '../types/task';
 
 export const getInitials = (name?: string): string => {
   if (!name) return 'U';
@@ -15,14 +15,19 @@ export const getInitials = (name?: string): string => {
   return name.slice(0, 2).toUpperCase();
 };
 
+export interface TaskAttachmentWithMeta extends TaskAttachment {
+  taskId?: string;
+}
+
 interface AppContextType {
   user: User | null;
   profileData: UserProfile | null;
   userInitials: string;
   userProjects: Project[];
-  userTasks: Task[]; // المهام المنسوبة للمستخدم الحالي
-  allProjectTasks: Task[]; // كافة المهام الخاصة بجميع مشاريع المستخدم
-  usersMap: Record<string, UserProfile>; // قاموس لتخزين بيانات الأعضاء وقراءتها مباشرة $O(1)$
+  userTasks: Task[];
+  allProjectTasks: Task[];
+  allAttachments: TaskAttachmentWithMeta[]; // Added attachments array
+  usersMap: Record<string, UserProfile>;
   loading: boolean;
   getInitials: (name?: string) => string;
   logout: () => Promise<void>;
@@ -44,14 +49,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [userProjects, setUserProjects] = useState<Project[]>([]);
   const [userTasks, setUserTasks] = useState<Task[]>([]);
   const [allProjectTasks, setAllProjectTasks] = useState<Task[]>([]);
+  const [allAttachments, setAllAttachments] = useState<TaskAttachmentWithMeta[]>([]);
   const [usersMap, setUsersMap] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);
 
   const userInitials = useMemo(() => {
     return getInitials(profileData?.fullName);
   }, [profileData?.fullName]);
-  
-  // 
+
+  // 1. Authentication listener
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -60,6 +66,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserProjects([]);
         setUserTasks([]);
         setAllProjectTasks([]);
+        setAllAttachments([]);
         setUsersMap({});
         setLoading(false);
       }
@@ -68,18 +75,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return unsubAuth;
   }, []);
 
-  // 2. المزامنة اللحظية مع بيانات المستخدم ومقاطعاته
+  // 2. User profile, projects, and user tasks
   useEffect(() => {
     if (!user) return;
 
-    // حساب المستخدم
     const unsubUser = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
       if (docSnap.exists()) {
         setProfileData({ uid: user.uid, ...docSnap.data() } as UserProfile);
       }
     });
 
-    // مشاريع المستخدم
     const qProjects = query(
       collection(db, 'projects'),
       where('memberIds', 'array-contains', user.uid)
@@ -88,7 +93,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUserProjects(snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
     });
 
-    // مهام المستخدم الخاصة
     const qUserTasks = query(
       collection(db, 'tasks'),
       where('assigneeId', '==', user.uid)
@@ -105,7 +109,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user]);
 
-  // 3. مزامنة لحظية لكافة المهام الخاصة بمشاريع المستخدم
+  // 3. Sync all project tasks
   useEffect(() => {
     if (!user || userProjects.length === 0) {
       setAllProjectTasks([]);
@@ -113,8 +117,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const projectIds = userProjects.map((p) => p.id);
-    
-    // تقسيم الاستعلام لقمع حد الـ 30 عنصر في Firestore `in` query
     const chunks: string[][] = [];
     for (let i = 0; i < projectIds.length; i += 30) {
       chunks.push(projectIds.slice(i, i + 30));
@@ -124,7 +126,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const q = query(collection(db, 'tasks'), where('projectId', 'in', chunk));
       return onSnapshot(q, (snapshot) => {
         const fetchedTasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
-        
+
         setAllProjectTasks((prev) => {
           const taskMap = new Map(prev.map((t) => [t.id, t]));
           fetchedTasks.forEach((t) => taskMap.set(t.id, t));
@@ -138,11 +140,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user, userProjects]);
 
-  // 4. جلب ومزامنة بيانات الأعضاء (User Profiles Cache)
+  // 4. Subcollection listener: Fetch all task attachments
+  useEffect(() => {
+    if (!user) {
+      setAllAttachments([]);
+      return;
+    }
+
+    const qAttachments = collectionGroup(db, 'attachments');
+    const unsubAttachments = onSnapshot(qAttachments, (snapshot) => {
+      const fetchedFiles: TaskAttachmentWithMeta[] = snapshot.docs.map((d) => {
+        const parentTaskId = d.ref.parent.parent?.id;
+        return {
+          id: d.id,
+          taskId: parentTaskId,
+          ...d.data(),
+        } as TaskAttachmentWithMeta;
+      });
+
+      setAllAttachments(fetchedFiles);
+    });
+
+    return () => unsubAttachments();
+  }, [user]);
+
+  // 5. User profiles cache
   useEffect(() => {
     if (!user || userProjects.length === 0) return;
 
-    // استخراج معرفات جميع الأعضاء عبر المشاريع
     const allMemberIds = Array.from(
       new Set(userProjects.flatMap((p) => p.memberIds || []))
     );
@@ -184,6 +209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userProjects,
         userTasks,
         allProjectTasks,
+        allAttachments,
         usersMap,
         loading,
         getInitials,

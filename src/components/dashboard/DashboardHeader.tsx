@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { useApp } from '../../context/AppContext'; // اضبط المسار حسب هيكلة مشروعك
+import Svg, { Circle, Path } from 'react-native-svg';
+import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
 
 interface Props {
   onProfileSelect: () => void;
+  onSearch: () => void;
 }
 
-// دالة الحروف الأولى
 const getInitials = (name?: string) => {
   if (!name) return 'U';
   const parts = name.trim().split(' ');
@@ -17,15 +18,12 @@ const getInitials = (name?: string) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export const DashboardHeader: React.FC<Props> = ({ onProfileSelect }) => {
-  // جلب كل البيانات الجاهزة من AppContext
+export const DashboardHeader: React.FC<Props> = ({ onProfileSelect, onSearch }) => {
   const { profileData, userProjects, userTasks, loading } = useApp();
 
-  // حساب الأحرف الأولى
   const userName = profileData?.fullName || 'User';
   const userInitials = useMemo(() => getInitials(profileData?.fullName), [profileData?.fullName]);
 
-  // حساب الإحصائيات فورياً بدون استعلامات شبكة
   const statsList = useMemo(() => {
     const projectsCount = userProjects.length;
     const completedTasksCount = userTasks.filter((t) => t.status === 'done').length;
@@ -40,6 +38,7 @@ export const DashboardHeader: React.FC<Props> = ({ onProfileSelect }) => {
 
   return (
     <View style={styles.header}>
+      {/* User Info Header */}
       <View style={styles.headerTop}>
         <View>
           <Text style={styles.greetingText}>Good morning 👋</Text>
@@ -64,7 +63,20 @@ export const DashboardHeader: React.FC<Props> = ({ onProfileSelect }) => {
         </View>
       </View>
 
-      {/* Stats row */}
+      {/* Search Bar Trigger */}
+      <TouchableOpacity
+        style={styles.searchButton}
+        onPress={onSearch}
+        activeOpacity={0.8}
+      >
+        <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <Circle cx="6" cy="6" r="4.5" stroke="#94A3B8" strokeWidth="1.3" />
+          <Path d="M10 10l3 3" stroke="#94A3B8" strokeWidth="1.3" strokeLinecap="round" />
+        </Svg>
+        <Text style={styles.searchText}>Search tasks, projects, files...</Text>
+      </TouchableOpacity>
+
+      {/* Stats Row */}
       <View style={styles.statsRow}>
         {statsList.map((s) => (
           <View key={s.label} style={styles.statCard}>
@@ -125,6 +137,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#4ADE80',
     borderWidth: 2,
     borderColor: COLORS.bg,
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    marginTop: 12,
+    marginBottom: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  searchText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    flex: 1,
   },
   statsRow: {
     flexDirection: 'row',
