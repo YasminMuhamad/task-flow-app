@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,14 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAppContext } from '../context/AppContext'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Circle } from 'react-native-svg';
+
+import { useAppContext } from '../context/AppContext'; 
 import { Task } from '../types/task';
 import { getMillis } from './utils/date';
+import EmptyStateScreen from '../components/EmptyStateScreen';
+import { HighlightedText } from '../components/HighlightedText';
 
 interface Props {
   onBack: () => void;
@@ -20,7 +24,7 @@ interface Props {
 
 type FilterTab = 'all' | 'tasks' | 'projects' | 'files';
 
-// Preview limit when on "All" tab
+const RECENT_SEARCHES_KEY = '@recent_searches';
 const PREVIEW_LIMIT = 3;
 
 const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = {
@@ -47,42 +51,94 @@ const getFileIcon = (type?: string) => {
 export default function SearchScreen({ onBack }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   const { userProjects, allProjectTasks, allAttachments, usersMap, getInitials } = useAppContext();
 
   const hasQuery = query.trim().length > 0;
   const cleanQuery = query.toLowerCase().trim();
 
- // 1. Projects
-const filteredProjects = useMemo(() => {
-  let list = userProjects;
-  if (hasQuery) {
-    list = userProjects.filter(
-      p => p.title?.toLowerCase().includes(cleanQuery) || p.tag?.toLowerCase().includes(cleanQuery)
-    );
-  }
-  return [...list].sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
-}, [userProjects, cleanQuery, hasQuery]);
+  useEffect(() => {
+    loadRecentSearches();
+  }, []);
 
-// 2. Tasks
-const filteredTasks = useMemo(() => {
-  let list = allProjectTasks;
-  if (hasQuery) {
-    list = allProjectTasks.filter(t => t.title?.toLowerCase().includes(cleanQuery));
-  }
-  return [...list].sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
-}, [allProjectTasks, cleanQuery, hasQuery]);
+  const loadRecentSearches = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(RECENT_SEARCHES_KEY);
+      if (saved) {
+        setRecentSearches(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error('Error loading recent searches', e);
+    }
+  };
 
-// 3. Attachments
-const filteredFiles = useMemo(() => {
-  let list = allAttachments;
-  if (hasQuery) {
-    list = allAttachments.filter(
-      f => f.name?.toLowerCase().includes(cleanQuery) || f.type?.toLowerCase().includes(cleanQuery)
+  const saveRecentSearch = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    try {
+      const filtered = recentSearches.filter((item) => item.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, 5);
+      setRecentSearches(updated);
+      await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error saving recent search', e);
+    }
+  };
+
+  const removeRecentSearch = async (text: string) => {
+    try {
+      const updated = recentSearches.filter((item) => item !== text);
+      setRecentSearches(updated);
+      await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error removing recent search', e);
+    }
+  };
+
+  const clearAllRecent = async () => {
+    try {
+      setRecentSearches([]);
+      await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
+    } catch (e) {
+      console.error('Error clearing recent searches', e);
+    }
+  };
+
+  // 1. Projects
+  const filteredProjects = useMemo(() => {
+    let list = userProjects;
+    if (hasQuery) {
+      list = userProjects.filter(
+        p => p.title?.toLowerCase().includes(cleanQuery) || p.tag?.toLowerCase().includes(cleanQuery)
+      );
+    }
+    return [...list].sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
+  }, [userProjects, cleanQuery, hasQuery]);
+
+  // 2. Tasks
+  const filteredTasks = useMemo(() => {
+    let list = allProjectTasks;
+    if (hasQuery) {
+      list = allProjectTasks.filter(t => t.title?.toLowerCase().includes(cleanQuery));
+    }
+    return [...list].sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
+  }, [allProjectTasks, cleanQuery, hasQuery]);
+
+  // 3. Attachments
+  const filteredFiles = useMemo(() => {
+    let list = hasQuery
+      ? allAttachments.filter(
+          (f) =>
+            f.name?.toLowerCase().includes(cleanQuery) ||
+            f.type?.toLowerCase().includes(cleanQuery)
+        )
+      : allAttachments;
+
+    return [...list].sort(
+      (a, b) => getMillis(b.createdAt) - getMillis(a.createdAt)
     );
-  }
-  return [...list].sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
-}, [allAttachments, cleanQuery, hasQuery]);
+  }, [allAttachments, cleanQuery, hasQuery]);
 
   const taskTitleMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -96,7 +152,6 @@ const filteredFiles = useMemo(() => {
     return map;
   }, [userProjects]);
 
-  // Apply preview limits when on 'all' filter tab
   const displayedProjects = filter === 'all' ? filteredProjects.slice(0, PREVIEW_LIMIT) : filteredProjects;
   const displayedTasks = filter === 'all' ? filteredTasks.slice(0, PREVIEW_LIMIT) : filteredTasks;
   const displayedFiles = filter === 'all' ? filteredFiles.slice(0, PREVIEW_LIMIT) : filteredFiles;
@@ -104,6 +159,8 @@ const filteredFiles = useMemo(() => {
   const showProjects = (filter === 'all' || filter === 'projects') && filteredProjects.length > 0;
   const showTasks = (filter === 'all' || filter === 'tasks') && filteredTasks.length > 0;
   const showFiles = (filter === 'all' || filter === 'files') && filteredFiles.length > 0;
+
+  const hasResults = showProjects || showTasks || showFiles;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -124,6 +181,8 @@ const filteredFiles = useMemo(() => {
             placeholderTextColor="#94A3B8"
             value={query}
             onChangeText={setQuery}
+            onSubmitEditing={() => saveRecentSearch(query)}
+            returnKeyType="search"
             autoFocus
           />
 
@@ -165,6 +224,48 @@ const filteredFiles = useMemo(() => {
 
       {/* Content Stream */}
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        
+        {!hasQuery && recentSearches.length > 0 && (
+          <View style={styles.recentSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Searches</Text>
+              <TouchableOpacity onPress={clearAllRecent}>
+                <Text style={styles.clearAllText}>Clear all</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.recentWrap}>
+              {recentSearches.map((item, idx) => (
+                <View key={idx} style={styles.recentChip}>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setQuery(item);
+                      saveRecentSearch(item);
+                    }}
+                  >
+                    <Text style={styles.recentText}>{item}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => removeRecentSearch(item)} hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}>
+                    <Svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                      <Path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" />
+                    </Svg>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {hasQuery && !hasResults && (
+          <View style={styles.emptyContainer}>
+            <EmptyStateScreen
+              variant="tasks"
+              title="No Results Found"
+              subtitle={`No matching ${filter === 'all' ? 'items' : filter} for "${query}"`}
+            />
+          </View>
+        )}
 
         {/* Projects Section */}
         {showProjects && (
@@ -186,7 +287,12 @@ const filteredFiles = useMemo(() => {
                         <Text style={styles.tagText}>{p.tag}</Text>
                       </View>
                     )}
-                    <Text style={styles.projectTitle}>{p.title}</Text>
+                    <HighlightedText 
+  text={p.title} 
+  query={query} 
+  style={styles.projectTitle}
+  highlightStyle={{ backgroundColor: '#FEF08A', color: '#1E293B' }} 
+/>
                   </View>
                   <Text style={styles.progressText}>{p.progress || 0}%</Text>
                 </View>
@@ -239,7 +345,12 @@ const filteredFiles = useMemo(() => {
                     <Text style={styles.avatarText}>{initials}</Text>
                   </View>
                   <View style={styles.taskDetails}>
-                    <Text style={styles.taskTitle} numberOfLines={1}>{t.title}</Text>
+                    <HighlightedText 
+                      text={t.title} 
+                      query={query} 
+                      style={styles.taskTitle}
+                      highlightStyle={{ backgroundColor: '#FEF08A', color: '#1E293B' }} 
+                    />
                     <View style={styles.taskBadges}>
                       <Text style={styles.taskProjectText}>{projectName}</Text>
                       <View style={[styles.badge, { backgroundColor: pr.bg }]}>
@@ -275,9 +386,12 @@ const filteredFiles = useMemo(() => {
                     <Text style={styles.fileIconEmoji}>{getFileIcon(file.type)}</Text>
                   </View>
                   <View style={styles.fileDetails}>
-                    <Text style={styles.fileName} numberOfLines={1}>
-                      {file.name}
-                    </Text>
+                    <HighlightedText 
+  text={file.name} 
+  query={query} 
+  style={styles.fileName}
+  highlightStyle={{ backgroundColor: '#FEF08A', color: '#1E293B' }} 
+/>
                     <Text style={styles.fileMeta}>
                       {file.type?.toUpperCase()} · {file.size} {taskTitle ? `· ${taskTitle}` : ''}
                     </Text>
@@ -366,6 +480,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 24,
   },
+  recentSection: {
+    marginBottom: 20,
+  },
+  clearAllText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  recentWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  recentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  recentText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1E293B',
+  },
+  emptyContainer: {
+    paddingTop: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   section: {
     marginBottom: 16,
   },
@@ -386,27 +535,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#566551',
-  },
-  recentWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  recentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-  },
-  recentText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#1E293B',
   },
   projectCard: {
     borderRadius: 16,

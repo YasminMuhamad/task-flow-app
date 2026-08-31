@@ -60,7 +60,6 @@ const getTagColor = (tag: string) => {
 export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) => {
   const { allProjectTasks, usersMap } = useApp();
 
-  // 1. حساب إحصائيات المهام لحظياً وبدون أي طلبات شبكية
   const taskStats = useMemo(() => {
     const projectTasks = allProjectTasks.filter((t) => t.projectId === project.id);
     const totalCount = projectTasks.length;
@@ -72,7 +71,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) =>
     return { doneCount, totalCount, progress };
   }, [allProjectTasks, project.id, project.progress]);
 
-  // 2. استخراج الحروف الأولى للأعضاء من قاموس الأعضاء المخبأ بـ AppContext
   const membersInitials = useMemo(() => {
     if (!project.memberIds || project.memberIds.length === 0) return [];
 

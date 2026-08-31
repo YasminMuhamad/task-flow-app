@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import {
   arrayUnion,
   arrayRemove,
 } from 'firebase/firestore';
+
 import { db } from '../api/firebase';
 import { COLORS } from '../constants/theme';
 import { Project } from '../types/project';
@@ -33,6 +34,7 @@ import { CreateTaskModal } from '../components/CreateTaskModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { useApp } from '../context/AppContext';
 import { sendNotification } from '../services/notificationService';
+import EmptyStateScreen from '../components/EmptyStateScreen';
 
 interface Props {
   project: Project;
@@ -61,17 +63,120 @@ const STATUS_LABELS: Record<string, string> = {
   done: 'Done',
 };
 
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'todo', label: 'To Do' },
+  { key: 'inprogress', label: 'In Progress' },
+  { key: 'done', label: 'Done' },
+];
+
 const formatDueDate = (dateVal: any) => {
   if (!dateVal) return '';
   if (typeof dateVal.toDate === 'function') {
-    const d = dateVal.toDate();
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return dateVal.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   if (dateVal instanceof Date) {
     return dateVal.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   return String(dateVal);
 };
+
+// --- Extracted Task Item Component for Performance Optimization ---
+interface TaskItemProps {
+  item: Task;
+  usersMap: Record<string, any>;
+  getInitials: (name: string) => string;
+  onTaskSelect: (taskId: string) => void;
+  onToggleStatus: (taskId: string, currentStatus: TaskStatus) => void;
+}
+
+const TaskItem = memo(({ item, usersMap, getInitials, onTaskSelect, onToggleStatus }: TaskItemProps) => {
+  const status = item.status || 'todo';
+  const priority = item.priority || 'Low';
+  const pColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.Low;
+
+  const assignee = usersMap[item.assigneeId];
+  const assigneeName = assignee?.fullName || 'User';
+  const assigneeInitials = getInitials(assigneeName);
+  const assigneeFirstName = assigneeName.split(' ')[0];
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => onTaskSelect(item.id)}
+      style={[
+        styles.taskCard,
+        status === 'done' && styles.taskCardDone,
+        status === 'inprogress' && styles.taskCardInprogress,
+      ]}
+    >
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <TouchableOpacity
+          onPress={() => onToggleStatus(item.id, status)}
+          style={[styles.checkbox, status === 'done' && styles.checkboxDone]}
+          activeOpacity={0.8}
+        >
+          {status === 'done' && (
+            <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <Path d="M2 5l2.5 2.5L8 2.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          )}
+        </TouchableOpacity>
+
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.taskTitle, status === 'done' && styles.taskTitleDone]}>
+            {item.title}
+          </Text>
+
+          <View style={styles.taskMetaRow}>
+            <View style={styles.metaItem}>
+              <View style={styles.assigneeAvatar}>
+                <Text style={styles.assigneeAvatarText}>{assigneeInitials}</Text>
+              </View>
+              <Text style={styles.metaText}>{assigneeFirstName}</Text>
+            </View>
+
+            <Text style={{ color: '#CBD5E1' }}>·</Text>
+
+            <View style={[styles.dueDateBadge, item.overdue && { backgroundColor: '#FEE2E2' }]}>
+              <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <Rect x="1" y="2" width="8" height="7" rx="1.5" stroke={item.overdue ? '#DC2626' : '#94A3B8'} strokeWidth="1" />
+                <Path d="M3 1v2M7 1v2M1 4.5h8" stroke={item.overdue ? '#DC2626' : '#94A3B8'} strokeWidth="1" strokeLinecap="round" />
+              </Svg>
+              <Text style={[styles.metaText, item.overdue && { color: '#DC2626' }]}>
+                {formatDueDate(item.dueDate)}
+              </Text>
+            </View>
+
+            <View style={[styles.priorityPill, { backgroundColor: pColor.bg }]}>
+              <Text style={[styles.priorityText, { color: pColor.text }]}>{priority}</Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => onToggleStatus(item.id, status)}
+              style={[
+                styles.statusPill,
+                status === 'inprogress' && { backgroundColor: '#C5D5E4' },
+                status === 'done' && { backgroundColor: '#DCFCE7' },
+              ]}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.statusPillText,
+                  status === 'inprogress' && { color: '#1E293B' },
+                  status === 'done' && { color: '#16A34A' },
+                ]}
+              >
+                {STATUS_LABELS[status]}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
 
 export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect, onOpenArchived }: Props) {
   const insets = useSafeAreaInsets();
@@ -81,9 +186,10 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   const [filter, setFilter] = useState<FilterTab>('all');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
+
+  // Modals visibility
   const [modalVisible, setModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -91,6 +197,7 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   const [editTag, setEditTag] = useState(initialProject.tag || '');
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Members Management State
   const [membersModalVisible, setMembersModalVisible] = useState(false);
   const [searchEmail, setSearchEmail] = useState('');
   const [searching, setSearching] = useState(false);
@@ -99,6 +206,9 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   const [memberActionLoading, setMemberActionLoading] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{ id: string; name: string } | null>(null);
 
+  const isStarred = currentProject.starredBy?.includes(user?.uid || '');
+
+  // Real-time project data
   useEffect(() => {
     const projectRef = doc(db, 'projects', initialProject.id);
     const unsubProject = onSnapshot(projectRef, (docSnap) => {
@@ -113,78 +223,105 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     return () => unsubProject();
   }, [initialProject.id]);
 
+  // Real-time tasks data
   useEffect(() => {
     setLoadingTasks(true);
     const q = query(collection(db, 'tasks'), where('projectId', '==', currentProject.id));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedTasks: Task[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...(docSnap.data() as Omit<Task, 'id'>),
-      }));
-      setTasks(fetchedTasks);
-      setLoadingTasks(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedTasks: Task[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<Task, 'id'>),
+        }));
+        setTasks(fetchedTasks);
+        setLoadingTasks(false);
+      },
+      (error) => {
+        console.error('Error fetching tasks: ', error);
+        setLoadingTasks(false);
+      }
+    );
 
     return () => unsubscribe();
   }, [currentProject.id]);
 
   const filteredTasks = useMemo(() => {
-    const activeTasks = tasks.filter((t) => t.archived !== true);
-  
+    const activeTasks = tasks.filter((t) => !t.archived);
     if (filter === 'all') return activeTasks;
-  return activeTasks.filter((t) => t.status === filter);
+    return activeTasks.filter((t) => t.status === filter);
   }, [tasks, filter]);
 
   const computedProgress = useMemo(() => {
-    const activeTasks = tasks.filter((t) => t.archived !== true);
+    const activeTasks = tasks.filter((t) => !t.archived);
     const totalCount = activeTasks.length;
     const doneCount = activeTasks.filter((t) => t.status === 'done').length;
 
     return totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : currentProject.progress || 0;
   }, [tasks, currentProject.progress]);
 
-  const toggleStatus = useCallback(async (taskId: string, currentStatus: TaskStatus) => {
-    if (!user) return;
+  const toggleStatus = useCallback(
+    async (taskId: string, currentStatus: TaskStatus) => {
+      if (!user) return;
 
-    const nextStatus: TaskStatus =
-      currentStatus === 'todo'
-        ? 'inprogress'
-        : currentStatus === 'inprogress'
-        ? 'done'
-        : 'todo';
+      const nextStatus: TaskStatus =
+        currentStatus === 'todo'
+          ? 'inprogress'
+          : currentStatus === 'inprogress'
+          ? 'done'
+          : 'todo';
 
-    try {
-      const taskRef = doc(db, 'tasks', taskId);
-      await updateDoc(taskRef, { status: nextStatus });
+      try {
+        const taskRef = doc(db, 'tasks', taskId);
+        await updateDoc(taskRef, { status: nextStatus });
 
-      const targetTask = tasks.find((t) => t.id === taskId);
+        const targetTask = tasks.find((t) => t.id === taskId);
 
-      if (
-        nextStatus === 'done' && 
-        currentStatus !== 'done' && 
-        targetTask && 
-        currentProject.createdBy && 
-        currentProject.createdBy !== user.uid
-      ) {
-        const assigneeInfo = targetTask.assigneeId ? usersMap[targetTask.assigneeId] : null;
-        const assigneeName = assigneeInfo?.fullName || 'A teammate';
+        if (
+          nextStatus === 'done' &&
+          currentStatus !== 'done' &&
+          targetTask &&
+          currentProject.createdBy &&
+          currentProject.createdBy !== user.uid
+        ) {
+          const assigneeInfo = targetTask.assigneeId ? usersMap[targetTask.assigneeId] : null;
+          const assigneeName = assigneeInfo?.fullName || 'A teammate';
 
-        await sendNotification({
-          recipientId: currentProject.createdBy,
-          senderId: user.uid,
-          type: 'task',
-          text: `${assigneeName} completed "${targetTask.title}"`,
-          projectId: targetTask.projectId,
-          taskId: targetTask.id,
-        });
+          await sendNotification({
+            recipientId: currentProject.createdBy,
+            senderId: user.uid,
+            type: 'task',
+            text: `${assigneeName} completed "${targetTask.title}"`,
+            projectId: targetTask.projectId,
+            taskId: targetTask.id,
+          });
+        }
+      } catch (err) {
+        console.error('Error updating task status:', err);
       }
-    } catch (err) {
-      console.error('Error updating task status:', err);
-    }
-  }, [tasks, user, usersMap, currentProject.createdBy, currentProject.title]);
+    },
+    [tasks, user, usersMap, currentProject.createdBy]
+  );
 
   const isOwner = currentProject.createdBy === user?.uid;
+  
+  const handleToggleStar = async () => {
+    if (!currentProject || !user?.uid) return;
+
+    const projectRef = doc(db, 'projects', currentProject.id);
+    const isStarred = currentProject.starredBy?.includes(user.uid);
+
+    try {
+      await updateDoc(projectRef, {
+        starredBy: isStarred 
+          ? arrayRemove(user.uid)
+          : arrayUnion(user.uid)
+      });
+    } catch (error) {
+      console.error("Error toggling star:", error);
+    }
+  };
 
   const handleMenuAction = (action: string) => {
     setMenuVisible(false);
@@ -200,6 +337,9 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
         break;
       case 'archived':
         onOpenArchived();
+        break;
+      case 'starred':
+        handleToggleStar();
         break;
     }
   };
@@ -267,9 +407,7 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
           name: data.fullName || 'User',
           email: data.email || trimmed,
         });
-        setNotFound(false);
       } else {
-        setFoundUser(null);
         setNotFound(true);
       }
     } catch (error) {
@@ -314,93 +452,18 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     }
   };
 
-const renderTaskItem = useCallback(({ item }: { item: Task }) => {
-    const status = item.status || 'todo';
-    const priority = item.priority || 'Low';
-    const pColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.Low;
-
-    const assignee = usersMap[item.assigneeId];
-    const assigneeName = assignee?.fullName || 'User';
-    const assigneeInitials = getInitials(assigneeName);
-    const assigneeFirstName = assigneeName.split(' ')[0];
-
-    return (
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => onTaskSelect(item.id)}
-        style={[
-          styles.taskCard,
-          status === 'done' && styles.taskCardDone,
-          status === 'inprogress' && styles.taskCardInprogress,
-        ]}
-      >
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <TouchableOpacity
-            onPress={() => toggleStatus(item.id, status)}
-            style={[styles.checkbox, status === 'done' && styles.checkboxDone]}
-            activeOpacity={0.8}
-          >
-            {status === 'done' && (
-              <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <Path d="M2 5l2.5 2.5L8 2.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </Svg>
-            )}
-          </TouchableOpacity>
-
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.taskTitle, status === 'done' && styles.taskTitleDone]}>
-              {item.title}
-            </Text>
-
-            <View style={styles.taskMetaRow}>
-              <View style={styles.metaItem}>
-                <View style={styles.assigneeAvatar}>
-                  <Text style={styles.assigneeAvatarText}>{assigneeInitials}</Text>
-                </View>
-                <Text style={styles.metaText}>{assigneeFirstName}</Text>
-              </View>
-
-              <Text style={{ color: '#CBD5E1' }}>·</Text>
-
-              <View style={[styles.dueDateBadge, item.overdue && { backgroundColor: '#FEE2E2' }]}>
-                <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <Rect x="1" y="2" width="8" height="7" rx="1.5" stroke={item.overdue ? '#DC2626' : '#94A3B8'} strokeWidth="1" />
-                  <Path d="M3 1v2M7 1v2M1 4.5h8" stroke={item.overdue ? '#DC2626' : '#94A3B8'} strokeWidth="1" strokeLinecap="round" />
-                </Svg>
-                <Text style={[styles.metaText, item.overdue && { color: '#DC2626' }]}>
-                  {formatDueDate(item.dueDate)}
-                </Text>
-              </View>
-
-              <View style={[styles.priorityPill, { backgroundColor: pColor.bg }]}>
-                <Text style={[styles.priorityText, { color: pColor.text }]}>{priority}</Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => toggleStatus(item.id, status)}
-                style={[
-                  styles.statusPill,
-                  status === 'inprogress' && { backgroundColor: '#C5D5E4' },
-                  status === 'done' && { backgroundColor: '#DCFCE7' },
-                ]}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.statusPillText,
-                    status === 'inprogress' && { color: '#1E293B' },
-                    status === 'done' && { color: '#16A34A' },
-                  ]}
-                >
-                  {STATUS_LABELS[status]}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  }, [usersMap, toggleStatus, getInitials, onTaskSelect]);
+  const renderTaskItem = useCallback(
+    ({ item }: { item: Task }) => (
+      <TaskItem
+        item={item}
+        usersMap={usersMap}
+        getInitials={getInitials}
+        onTaskSelect={onTaskSelect}
+        onToggleStatus={toggleStatus}
+      />
+    ),
+    [usersMap, getInitials, onTaskSelect, toggleStatus]
+  );
 
   return (
     <View style={styles.container}>
@@ -453,6 +516,11 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
                     <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('archived')}>
                       <Text style={styles.menuText}>Archived Tasks</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('starred')}>
+                      <Text style={styles.menuText}>
+                        {isStarred ? '★ Unstar Project' : '☆ Star Project'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </TouchableWithoutFeedback>
@@ -480,7 +548,7 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
                 </View>
               );
             })}
-            {currentProject.memberIds?.length > 4 && (
+            {currentProject.memberIds && currentProject.memberIds.length > 4 && (
               <View style={[styles.avatar, styles.extraAvatar]}>
                 <Text style={styles.extraAvatarText}>+{currentProject.memberIds.length - 4}</Text>
               </View>
@@ -499,12 +567,7 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
       {/* Filter Tabs */}
       <View style={styles.filterWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          {([
-            { key: 'all', label: 'All' },
-            { key: 'todo', label: 'To Do' },
-            { key: 'inprogress', label: 'In Progress' },
-            { key: 'done', label: 'Done' },
-          ] as const).map((tab) => {
+          {FILTER_TABS.map((tab) => {
             const count =
               tab.key === 'all'
                 ? tasks.length
@@ -547,22 +610,32 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
           data={filteredTasks}
           keyExtractor={(item) => item.id}
           renderItem={renderTaskItem}
-          contentContainerStyle={styles.taskList}
+          contentContainerStyle={[
+            styles.taskList,
+            filteredTasks.length === 0 && styles.emptyListContainer,
+          ]}
           initialNumToRender={8}
           maxToRenderPerBatch={10}
           windowSize={5}
-          ListEmptyComponent={<Text style={styles.emptyText}>No tasks found in this section.</Text>}
+          ListEmptyComponent={
+            <EmptyStateScreen
+              variant="tasks"
+              onCTA={() => setModalVisible(true)}
+            />
+          }
         />
       )}
 
       {/* Footer / Add Task Button */}
       <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addTaskBtn} activeOpacity={0.9}>
-          <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <Path d="M8 3v10M3 8h10" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-          </Svg>
-          <Text style={styles.addTaskBtnText}>Add New Task</Text>
-        </TouchableOpacity>
+        {filteredTasks.length > 0 && (
+          <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addTaskBtn} activeOpacity={0.9}>
+            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <Path d="M8 3v10M3 8h10" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+            </Svg>
+            <Text style={styles.addTaskBtnText}>Add New Task</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <CreateTaskModal
@@ -572,7 +645,7 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
         onTaskCreated={() => setModalVisible(false)}
       />
 
-      {/* Modal Manage Members */}
+      {/* Manage Members Modal */}
       <Modal
         visible={membersModalVisible}
         transparent
@@ -623,7 +696,6 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
               </View>
             )}
 
-            {/* Project Current Members List */}
             <Text style={[styles.inputLabel, { marginTop: 16 }]}>
               Project Members ({currentProject.memberIds?.length || 0})
             </Text>
@@ -730,6 +802,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  emptyListContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   header: {
     backgroundColor: COLORS.primary || '#566551',

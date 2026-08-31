@@ -17,6 +17,7 @@ import { FilterTabs, FilterTab } from '../components/dashboard/FilterTabs';
 import { ProjectCard } from '../components/dashboard/ProjectCard';
 import { CreateProjectModal } from '../components/dashboard/CreateProjectModal';
 import { Project } from '../types/project';
+import EmptyStateScreen, { EmptyStateVariant } from '../components/EmptyStateScreen';
 
 interface Props {
   onProjectSelect?: (project: Project) => void;
@@ -31,18 +32,35 @@ export default function DashboardScreen({
   onSearch,
   onNotifications,
 }: Props) {
-  const { userProjects, loading } = useApp();
+  const { userProjects, user, loading } = useApp();
   
   const [active, setActive] = useState<FilterTab>('all');
   const [modalVisible, setModalVisible] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
   const insets = useSafeAreaInsets();
-  const sortedProjects = useMemo(() => {
-    return [...userProjects].sort((a, b) => {
+
+  const filteredProjects = useMemo(() => {
+    let list = [...userProjects];
+
+    if (active === 'mine') {
+      list = list.filter((p) => p.createdBy === user?.uid);
+    } else if (active === 'starred') {
+      list = list.filter((p) => p.starredBy?.includes(user?.uid || ''));
+    }
+
+    return list.sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt as any).getTime() : 0;
       const dateB = b.createdAt ? new Date(b.createdAt as any).getTime() : 0;
       return dateB - dateA;
     });
-  }, [userProjects]);
+  }, [userProjects, active, user?.uid]);
+
+  const displayedProjects = useMemo(() => {
+    return showAll ? filteredProjects : filteredProjects.slice(0, 3);
+  }, [filteredProjects, showAll]);
+
+  const emptyVariant: EmptyStateVariant = active === 'all' ? 'projects' : active;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -56,19 +74,26 @@ export default function DashboardScreen({
         {/* Section label */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Active Projects</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See all →</Text>
-          </TouchableOpacity>
+          {filteredProjects.length > 3 && (
+            <TouchableOpacity onPress={() => setShowAll(prev => !prev)}>
+              <Text style={styles.seeAllText}>
+                {showAll ? 'Show less ←' : 'See all →'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Project cards */}
         <View style={styles.cardsList}>
           {loading ? (
             <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
-          ) : sortedProjects.length === 0 ? (
-            <Text style={styles.emptyText}>No projects found for you</Text>
+          ) : filteredProjects.length === 0 ? (
+            <EmptyStateScreen
+              variant={emptyVariant}
+              onCTA={() => setModalVisible(true)}
+            />
           ) : (
-            sortedProjects.map((p) => (
+            displayedProjects.map((p) => (
               <ProjectCard 
                 key={p.id} 
                 project={p} 
@@ -80,22 +105,24 @@ export default function DashboardScreen({
       </ScrollView>
 
       {/* FAB Button for New Project */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          onPress={() => setModalVisible(true)}
-          activeOpacity={0.9}
-          style={[
-          styles.fabButton, 
-          { bottom: insets.bottom } 
-        ]}
-        >
-          <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <Path d="M11 4v14M4 11h14" stroke={COLORS.white} strokeWidth="2.5" strokeLinecap="round" />
-          </Svg>
-        </TouchableOpacity>
-        <Text style={[styles.fabText, { bottom: insets.bottom }]}>New</Text>
-      </View>
-
+      {userProjects.length > 0 && (
+        <View style={styles.fabContainer}>
+          <TouchableOpacity
+            onPress={() => setModalVisible(true)}
+            activeOpacity={0.9}
+            style={[
+              styles.fabButton, 
+              { bottom: insets.bottom } 
+            ]}
+          >
+            <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <Path d="M11 4v14M4 11h14" stroke={COLORS.white} strokeWidth="2.5" strokeLinecap="round" />
+            </Svg>
+          </TouchableOpacity>
+          <Text style={[styles.fabText, { bottom: insets.bottom }]}>New</Text>
+        </View>
+      )}
+      
       {/* Create Project Modal */}
       <CreateProjectModal
         visible={modalVisible}

@@ -186,15 +186,24 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.overlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardView}
-          >
-            <View style={styles.container}>
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>Create New Project</Text>
+  {/* 1. جعل الخلفية الخارجية القابلة للضغط تتكفل بحدث الإغلاق وإخفاء الكيبورد */}
+  <TouchableOpacity
+    style={styles.overlay}
+    activeOpacity={1}
+    onPress={() => {
+      Keyboard.dismiss();
+      handleClose(); // <-- إغلاق المودال عند الضغط خارجاً
+    }}
+  >
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.keyboardView}
+    >
+      {/* 2. منع تسريب الضغط الداخلي حتى لا يغلق المودال عند التفاعل مع مدخلات الكارت */}
+      <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+        <View style={styles.container}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalTitle}>Create New Project</Text>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -345,9 +354,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </View>
               </ScrollView>
             </View>
+            </TouchableWithoutFeedback>
           </KeyboardAvoidingView>
-        </View>
-      </TouchableWithoutFeedback>
+      </TouchableOpacity>
     </Modal>
   );
 };
