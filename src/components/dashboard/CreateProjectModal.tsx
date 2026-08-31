@@ -13,10 +13,11 @@ import {
   Keyboard,
   ScrollView,
 } from 'react-native';
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
+import { sendNotification } from '../../services/notificationService';
 
 interface UserMember {
   uid: string;
@@ -45,7 +46,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onClose,
   onProjectCreated,
 }) => {
-  const { user, getInitials } = useApp();
+  const { user, getInitials, profileData } = useApp();
 
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -144,11 +145,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
     setLoading(true);
     try {
+      const senderName = profileData?.fullName || user.email || 'Someone';
+
       const memberIds = Array.from(
         new Set([user.uid, ...selectedMembers.map((m) => m.uid)])
       );
 
-      await addDoc(collection(db, 'projects'), {
+      const projectDocRef = await addDoc(collection(db, 'projects'), {
         title: title.trim(),
         desc: desc.trim() || '',
         tag: tag,
@@ -161,6 +164,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         createdBy: user.uid,
         createdAt: serverTimestamp(),
       });
+
+      for (const member of selectedMembers) {
+        await sendNotification({
+          recipientId: member.uid,
+          senderId: user.uid,
+          type: 'invite',
+          text: `${senderName} added you to project "${title.trim()}"`,
+          projectId: projectDocRef.id,
+        });
+      }
 
       handleClose();
       onProjectCreated();

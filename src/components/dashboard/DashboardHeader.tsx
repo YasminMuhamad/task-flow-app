@@ -6,7 +6,9 @@ import { COLORS } from '../../constants/theme';
 
 interface Props {
   onProfileSelect: () => void;
+  onNotifications: () => void;
   onSearch: () => void;
+  hasUnreadNotifications?: boolean;
 }
 
 const getInitials = (name?: string) => {
@@ -18,7 +20,12 @@ const getInitials = (name?: string) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export const DashboardHeader: React.FC<Props> = ({ onProfileSelect, onSearch }) => {
+export const DashboardHeader: React.FC<Props> = ({
+  onProfileSelect,
+  onNotifications,
+  onSearch,
+  hasUnreadNotifications = true,
+}) => {
   const { profileData, userProjects, userTasks, loading } = useApp();
 
   const userName = profileData?.fullName || 'User';
@@ -47,19 +54,42 @@ export const DashboardHeader: React.FC<Props> = ({ onProfileSelect, onSearch }) 
           </Text>
         </View>
 
-        <View style={styles.avatarContainer}>
+        {/* Action Controls (Notifications + Profile Avatar) */}
+        <View style={styles.actionGroup}>
+          {/* Notification Button */}
           <TouchableOpacity
-            style={styles.avatar}
-            onPress={onProfileSelect}
+            style={styles.notifButton}
+            onPress={onNotifications}
             activeOpacity={0.7}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <Text style={styles.avatarText}>{userInitials}</Text>
-            )}
+            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <Path
+                d="M8 1.5a4 4 0 014 4v2.5l1 2H3l1-2V5.5a4 4 0 014-4zM6.5 12a1.5 1.5 0 003 0"
+                stroke="#566551"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+
+            {hasUnreadNotifications && <View style={styles.notifBadgeDot} />}
           </TouchableOpacity>
-          <View style={styles.onlineBadge} />
+
+          {/* User Profile Avatar */}
+          <View style={styles.avatarContainer}>
+            <TouchableOpacity
+              style={styles.avatar}
+              onPress={onProfileSelect}
+              activeOpacity={0.7}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Text style={styles.avatarText}>{userInitials}</Text>
+              )}
+            </TouchableOpacity>
+            <View style={styles.onlineBadge} />
+          </View>
         </View>
       </View>
 
@@ -110,6 +140,33 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.text,
+  },
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notifButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  notifBadgeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#566551',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   avatarContainer: {
     position: 'relative',

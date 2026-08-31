@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Timestamp } from 'firebase/firestore';
-import { useApp } from '../../context/AppContext'; // اضبط المسار حسب هيكلة مشروعك
+import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
 import { Project } from '../../types/project';
 

@@ -1,10 +1,22 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, collection, query, where, onSnapshot, documentId, collectionGroup } from 'firebase/firestore';
+import {
+  doc,
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+  documentId,
+  collectionGroup,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
 import { UserProfile } from '../types/user';
 import { Project } from '../types/project';
 import { Task, TaskAttachment } from '../types/task';
+import { AppNotification } from '../types/notification';
 
 export const getInitials = (name?: string): string => {
   if (!name) return 'U';
@@ -13,6 +25,15 @@ export const getInitials = (name?: string): string => {
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }
   return name.slice(0, 2).toUpperCase();
+};
+
+export const getMemberColor = (str: string): string => {
+  const colors = ['#8DA68A', '#C5D5E4', '#A8BECE', '#3F4B3C', '#566551'];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
 };
 
 export interface TaskAttachmentWithMeta extends TaskAttachment {
@@ -26,12 +47,20 @@ interface AppContextType {
   userProjects: Project[];
   userTasks: Task[];
   allProjectTasks: Task[];
-  allAttachments: TaskAttachmentWithMeta[]; // Added attachments array
+  allAttachments: TaskAttachmentWithMeta[];
+  notifications: AppNotification[];
+  hasUnreadNotifications: boolean;
   usersMap: Record<string, UserProfile>;
   loading: boolean;
   getInitials: (name?: string) => string;
+  getMemberColor: (str: string) => string;
   logout: () => Promise<void>;
+  markNotificationAsRead: (notificationId: string) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
 }
+
+const AppContext = createContext<AppContextType>({} as AppContextType);
 
 export const useAppContext = () => {
   const context = useContext(AppContext);
@@ -41,7 +70,7 @@ export const useAppContext = () => {
   return context;
 };
 
-const AppContext = createContext<AppContextType>({} as AppContextType);
+export const useApp = useAppContext;
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -50,6 +79,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [userTasks, setUserTasks] = useState<Task[]>([]);
   const [allProjectTasks, setAllProjectTasks] = useState<Task[]>([]);
   const [allAttachments, setAllAttachments] = useState<TaskAttachmentWithMeta[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [usersMap, setUsersMap] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);
 
@@ -67,6 +98,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserTasks([]);
         setAllProjectTasks([]);
         setAllAttachments([]);
+        setNotifications([]);
+        setHasUnreadNotifications(false);
         setUsersMap({});
         setLoading(false);
       }
@@ -75,7 +108,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return unsubAuth;
   }, []);
 
-  // 2. User profile, projects, and user tasks
+  // 2. User profile, projects, and assigned user tasks
   useEffect(() => {
     if (!user) return;
 
@@ -109,7 +142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user]);
 
-  // 3. Sync all project tasks
+  // 3. Sync all project tasks in chunks (Firestore 'in' query supports up to 30 items)
   useEffect(() => {
     if (!user || userProjects.length === 0) {
       setAllProjectTasks([]);
@@ -164,7 +197,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubAttachments();
   }, [user]);
 
-  // 5. User profiles cache
+  // 5. User profiles cache for all project members
   useEffect(() => {
     if (!user || userProjects.length === 0) return;
 
@@ -194,7 +227,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [user, userProjects]);
+  }, [user, userProjects, usersMap]);
+
+  // 6. Real-time Notifications Listener
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      setHasUnreadNotifications(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as AppNotification[];
+
+      notifs.sort((a: any, b: any) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
+
+      setNotifications(notifs);
+      setHasUnreadNotifications(notifs.some((n) => !n.read));
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Firestore update helper: Mark single notification as read
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const notifRef = doc(db, 'notifications', notificationId);
+      await updateDoc(notifRef, { read: true });
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
+  };
+
+  // Firestore update helper: Mark all notifications as read using batch writing
+  const markAllNotificationsAsRead = async () => {
+    const unreadNotifs = notifications.filter((n) => !n.read);
+    if (unreadNotifs.length === 0) return;
+
+    try {
+      const batch = writeBatch(db);
+      unreadNotifs.forEach((n) => {
+        const notifRef = doc(db, 'notifications', n.id);
+        batch.update(notifRef, { read: true });
+      });
+
+      await batch.commit();
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+    }
+  };
+  
+  // Firestore helper: Delete all notifications for the current user
+  const clearAllNotifications = async () => {
+    if (notifications.length === 0) return;
+
+    try {
+      const batch = writeBatch(db);
+      notifications.forEach((n) => {
+        const notifRef = doc(db, 'notifications', n.id);
+        batch.delete(notifRef);
+      });
+
+      await batch.commit();
+    } catch (error) {
+      console.error('Failed to clear all notifications:', error);
+    }
+  };
 
   const logout = async () => {
     await signOut(auth);
@@ -210,15 +320,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userTasks,
         allProjectTasks,
         allAttachments,
+        notifications,
+        hasUnreadNotifications,
         usersMap,
         loading,
         getInitials,
+        getMemberColor,
         logout,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        clearAllNotifications,
       }}
     >
       {children}
     </AppContext.Provider>
   );
 };
-
-export const useApp = () => useContext(AppContext);

@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { getInitials, getMemberColor } from '../context/AppContext';
 import {
   collection,
   addDoc,
@@ -26,6 +27,7 @@ import { db, auth } from '../api/firebase';
 import { COLORS } from '../constants/theme';
 import { TaskPriority, TaskStatus } from '../types/task';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { sendNotification } from '../services/notificationService';
 
 interface CreateTaskModalProps {
   visible: boolean;
@@ -40,25 +42,6 @@ interface MemberUser {
   initials: string;
   color: string;
 }
-
-const getMemberColor = (str: string) => {
-  const colors = ['#566551', '#C5D5E4', '#8DA68A', '#A8BECE', '#3F4B3C'];
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
-};
-
-const getInitials = (name: string) => {
-  if (!name) return 'U';
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-};
 
 export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   visible,
@@ -146,6 +129,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   };
 
   // save task to Firestore
+  // save task to Firestore
   const handleSaveTask = async () => {
     if (!title.trim()) {
       setError('Please enter a task title');
@@ -162,24 +146,40 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
     try {
       const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('No authenticated user');
 
-      // convert dueDateText to a valid Date object
+      const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
+      const currentUserProfile = userDocSnap.exists() ? userDocSnap.data() : null;
+      const senderName = currentUserProfile?.fullName || currentUser.email || 'Someone';
+
       const finalDueDate = dueDate || new Date();
+      const targetAssigneeId = assigneeId || currentUser.uid;
       
       const newTaskData = {
         projectId,
         title: title.trim(),
         description: description.trim(),
-        assigneeId: assigneeId || currentUser?.uid || '',
+        assigneeId: targetAssigneeId,
         dueDate: Timestamp.fromDate(finalDueDate),
         priority,
         status: 'todo' as TaskStatus,
         overdue: false,
-        createdBy: currentUser?.uid || '',
+        createdBy: currentUser.uid,
         createdAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, 'tasks'), newTaskData);
+      const docRef = await addDoc(collection(db, 'tasks'), newTaskData);
+
+      if (targetAssigneeId !== currentUser.uid) {
+        await sendNotification({
+          recipientId: targetAssigneeId,
+          senderId: currentUser.uid,
+          type: 'task',
+          text: `${senderName} assigned you to "${title.trim()}"`,
+          projectId: projectId,
+          taskId: docRef.id,
+        });
+      }
 
       setLoading(false);
       handleClose();

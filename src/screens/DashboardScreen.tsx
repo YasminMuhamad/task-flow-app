@@ -21,13 +21,15 @@ import { Project } from '../types/project';
 interface Props {
   onProjectSelect?: (project: Project) => void;
   onProfileSelect: () => void;
-  onSearch: () => void; // Added callback prop to open SearchScreen
+  onSearch: () => void;
+  onNotifications: () => void;
 }
 
 export default function DashboardScreen({
   onProjectSelect = () => {},
   onProfileSelect,
   onSearch,
+  onNotifications,
 }: Props) {
   const { userProjects, loading } = useApp();
   
@@ -46,7 +48,7 @@ export default function DashboardScreen({
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <DashboardHeader onProfileSelect={onProfileSelect} onSearch={onSearch} />
+        <DashboardHeader onProfileSelect={onProfileSelect} onSearch={onSearch} onNotifications={onNotifications} />
 
         {/* Filter tabs */}
         <FilterTabs activeTab={active} onTabChange={setActive} />

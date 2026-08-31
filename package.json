@@ -12,6 +12,7 @@
     "expo-document-picker": "^57.0.1",
     "expo-status-bar": "~57.0.1",
     "firebase": "^12.17.1",
+    "lucide-react-native": "^1.35.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
