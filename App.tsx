@@ -9,7 +9,8 @@ import ProjectDetailScreen from './src/screens/ProjectDetailScreen';
 import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ArchivedTasksScreen from './src/screens/ArchivedTasksScreen';
-import SearchScreen from './src/screens/SearchScreen'; // 1. Imported SearchScreen
+import SearchScreen from './src/screens/SearchScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 import { COLORS } from './src/constants/theme';
 import { Project } from './src/types/project';
 
@@ -19,7 +20,8 @@ function MainNavigator() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showArchivedTasks, setShowArchivedTasks] = useState(false);
-  const [showSearch, setShowSearch] = useState(false); // 2. Added state for SearchScreen
+  const [showSearch, setShowSearch] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -28,6 +30,7 @@ function MainNavigator() {
       setSelectedTaskId(null);
       setShowArchivedTasks(false);
       setShowSearch(false);
+      setShowNotifications(false); // Reset on auth change
     }
   }, [user]);
 
@@ -40,6 +43,15 @@ function MainNavigator() {
   }
 
   if (!user) return <AuthScreen />;
+
+  // Render NotificationsScreen if active
+  if (showNotifications) {
+    return (
+      <NotificationsScreen
+        onBack={() => setShowNotifications(false)}
+      />
+    );
+  }
 
   // Render SearchScreen if active
   if (showSearch) {
@@ -94,6 +106,7 @@ function MainNavigator() {
       onProjectSelect={(project) => setSelectedProject(project)} 
       onProfileSelect={() => setShowProfile(true)}
       onSearch={() => setShowSearch(true)}
+      onNotifications={() => setShowNotifications(true)}
     />
   );
 }

@@ -32,6 +32,7 @@ import { Task, TaskStatus } from '../types/task';
 import { CreateTaskModal } from '../components/CreateTaskModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { useApp } from '../context/AppContext';
+import { sendNotification } from '../services/notificationService';
 
 interface Props {
   project: Project;
@@ -60,15 +61,6 @@ const STATUS_LABELS: Record<string, string> = {
   done: 'Done',
 };
 
-const getMemberColor = (str: string) => {
-  const colors = ['#8DA68A', '#C5D5E4', '#A8BECE', '#3F4B3C', '#566551'];
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
-};
-
 const formatDueDate = (dateVal: any) => {
   if (!dateVal) return '';
   if (typeof dateVal.toDate === 'function') {
@@ -83,7 +75,7 @@ const formatDueDate = (dateVal: any) => {
 
 export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect, onOpenArchived }: Props) {
   const insets = useSafeAreaInsets();
-  const { user, usersMap, getInitials } = useApp();
+  const { user, usersMap, getInitials, getMemberColor } = useApp();
 
   const [currentProject, setCurrentProject] = useState<Project>(initialProject);
   const [filter, setFilter] = useState<FilterTab>('all');
@@ -153,6 +145,8 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   }, [tasks, currentProject.progress]);
 
   const toggleStatus = useCallback(async (taskId: string, currentStatus: TaskStatus) => {
+    if (!user) return;
+
     const nextStatus: TaskStatus =
       currentStatus === 'todo'
         ? 'inprogress'
@@ -163,10 +157,32 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     try {
       const taskRef = doc(db, 'tasks', taskId);
       await updateDoc(taskRef, { status: nextStatus });
+
+      const targetTask = tasks.find((t) => t.id === taskId);
+
+      if (
+        nextStatus === 'done' && 
+        currentStatus !== 'done' && 
+        targetTask && 
+        currentProject.createdBy && 
+        currentProject.createdBy !== user.uid
+      ) {
+        const assigneeInfo = targetTask.assigneeId ? usersMap[targetTask.assigneeId] : null;
+        const assigneeName = assigneeInfo?.fullName || 'A teammate';
+
+        await sendNotification({
+          recipientId: currentProject.createdBy,
+          senderId: user.uid,
+          type: 'task',
+          text: `${assigneeName} completed "${targetTask.title}"`,
+          projectId: targetTask.projectId,
+          taskId: targetTask.id,
+        });
+      }
     } catch (err) {
       console.error('Error updating task status:', err);
     }
-  }, []);
+  }, [tasks, user, usersMap, currentProject.createdBy, currentProject.title]);
 
   const isOwner = currentProject.createdBy === user?.uid;
 
