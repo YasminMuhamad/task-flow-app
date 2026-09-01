@@ -13,10 +13,11 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import ProjectDetailScreen from './src/screens/ProjectDetailScreen';
 import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
 import ArchivedTasksScreen from './src/screens/ArchivedTasksScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
-
+import { ThemeProvider } from './src/context/ThemeContext';
 import { COLORS } from './src/constants/theme';
 import { Project } from './src/types/project';
 
@@ -30,6 +31,7 @@ function MainNavigator() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [showArchivedTasks, setShowArchivedTasks] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -37,6 +39,7 @@ function MainNavigator() {
   useEffect(() => {
     if (user) {
       setShowProfile(false);
+      setShowEditProfile(false);
       setSelectedProject(null);
       setSelectedTaskId(null);
       setShowArchivedTasks(false);
@@ -91,8 +94,18 @@ function MainNavigator() {
     return <SearchScreen onBack={() => setShowSearch(false)} />;
   }
 
+  if (showEditProfile) {
+    return <EditProfileScreen onBack={() => setShowEditProfile(false)} />;
+  }
+
   if (showProfile) {
-    return <ProfileScreen onBack={() => setShowProfile(false)} onLogout={logout} />;
+    return (
+      <ProfileScreen
+        onBack={() => setShowProfile(false)}
+        onEditProfile={() => setShowEditProfile(true)}
+        onLogout={logout}
+      />
+    );
   }
 
   if (selectedTaskId) {
@@ -138,9 +151,11 @@ function MainNavigator() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <MainNavigator />
-      </AppProvider>
+      <ThemeProvider>
+        <AppProvider>
+          <MainNavigator />
+        </AppProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

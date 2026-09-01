@@ -18,6 +18,7 @@ import { db } from '../../api/firebase';
 import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
 import { sendNotification } from '../../services/notificationService';
+import { BlurView } from 'expo-blur';
 
 interface UserMember {
   uid: string;
@@ -47,6 +48,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onProjectCreated,
 }) => {
   const { user, getInitials, profileData } = useApp();
+
+  const PROJECT_TAGS = ['Design', 'Engineering', 'Marketing', 'General'];
 
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -186,23 +189,18 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-  {/* 1. جعل الخلفية الخارجية القابلة للضغط تتكفل بحدث الإغلاق وإخفاء الكيبورد */}
-  <TouchableOpacity
-    style={styles.overlay}
-    activeOpacity={1}
-    onPress={() => {
-      Keyboard.dismiss();
-      handleClose(); // <-- إغلاق المودال عند الضغط خارجاً
-    }}
-  >
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.keyboardView}
-    >
-      {/* 2. منع تسريب الضغط الداخلي حتى لا يغلق المودال عند التفاعل مع مدخلات الكارت */}
-      <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-        <View style={styles.container}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <BlurView intensity={25} tint="dark" style={styles.overlay}>
+        <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); handleClose(); }}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+            <View style={styles.container}>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Text style={styles.modalTitle}>Create New Project</Text>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
@@ -235,7 +233,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                 {/* Tag Selection */}
                 <View style={styles.tagRow}>
-                  {['Design', 'Engineering', 'Marketing'].map((t) => (
+                  {PROJECT_TAGS.map((t) => (
                     <TouchableOpacity
                       key={t}
                       style={[styles.tagChip, tag === t && styles.activeTagChip]}
@@ -295,7 +293,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                             { backgroundColor: getMemberColor(suggestedUser.uid) },
                           ]}
                         >
-                          {/* 👈 استخدام getInitials الجاهزة */}
                           <Text style={styles.avatarText}>{getInitials(suggestedUser.fullName)}</Text>
                         </View>
                         <View style={styles.suggestionInfo}>
@@ -314,7 +311,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   <View style={styles.membersRow}>
                     {selectedMembers.map((member) => {
                       const avatarBg = getMemberColor(member.uid);
-                      // 👈 استخدام getInitials الجاهزة
                       const initials = getInitials(member.fullName);
 
                       return (
@@ -354,9 +350,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </View>
               </ScrollView>
             </View>
-            </TouchableWithoutFeedback>
-          </KeyboardAvoidingView>
-      </TouchableOpacity>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </BlurView>
     </Modal>
   );
 };
@@ -364,7 +360,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(30, 41, 59, 0.45)', 
     justifyContent: 'center',
     paddingHorizontal: 20,
   },

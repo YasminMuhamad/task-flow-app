@@ -31,3 +31,23 @@ export const getMillis = (
 
   return 0;
 };
+
+export const formatTimeAgo = (dateInput: any): string => {
+  const millis = getMillis(dateInput);
+  if (!millis) return '';
+
+  const diffInSeconds = Math.floor((Date.now() - millis) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+  
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}h ago`;
+  
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) return `${diffInDays}d ago`;
+
+  return new Date(millis).toLocaleDateString();
+};

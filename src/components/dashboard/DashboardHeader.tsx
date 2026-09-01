@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'rea
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
+import { getInitials, getMemberColor } from '../../context/AppContext';
 
 interface Props {
   onProfileSelect: () => void;
@@ -11,22 +12,21 @@ interface Props {
   hasUnreadNotifications?: boolean;
 }
 
-const getInitials = (name?: string) => {
-  if (!name) return 'U';
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-};
-
 export const DashboardHeader: React.FC<Props> = ({
   onProfileSelect,
   onNotifications,
   onSearch,
-  hasUnreadNotifications = true,
+  hasUnreadNotifications,
 }) => {
-  const { profileData, userProjects, userTasks, loading } = useApp();
+
+  const { user, profileData, userProjects, userTasks, notifications = [], loading, getMemberColor, getInitials } = useApp();
+
+  const hasUnread = useMemo(() => {
+    if (typeof hasUnreadNotifications === 'boolean') {
+      return hasUnreadNotifications;
+    }
+    return notifications.some((n) => !n.read);
+  }, [notifications, hasUnreadNotifications]);
 
   const userName = profileData?.fullName || 'User';
   const userInitials = useMemo(() => getInitials(profileData?.fullName), [profileData?.fullName]);
@@ -42,6 +42,8 @@ export const DashboardHeader: React.FC<Props> = ({
       { label: 'Completed', val: completedTasksCount.toString() },
     ];
   }, [userProjects, userTasks]);
+
+  const userColor = getMemberColor(user?.uid || profileData?.uid || '');
 
   return (
     <View style={styles.header}>
@@ -72,20 +74,25 @@ export const DashboardHeader: React.FC<Props> = ({
               />
             </Svg>
 
-            {hasUnreadNotifications && <View style={styles.notifBadgeDot} />}
+            {hasUnread && <View style={styles.notifBadgeDot} />}
           </TouchableOpacity>
 
           {/* User Profile Avatar */}
           <View style={styles.avatarContainer}>
             <TouchableOpacity
-              style={styles.avatar}
+              style={[
+                styles.avatar,
+                { backgroundColor: getMemberColor(user?.uid || profileData?.uid || '') }
+              ]}
               onPress={onProfileSelect}
               activeOpacity={0.7}
             >
               {loading ? (
                 <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
-                <Text style={styles.avatarText}>{userInitials}</Text>
+                <Text style={styles.avatarText}>
+                  {getInitials(profileData?.fullName || user?.displayName || '')}
+                </Text>
               )}
             </TouchableOpacity>
             <View style={styles.onlineBadge} />
@@ -164,7 +171,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#566551',
+    backgroundColor: COLORS.primary,
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },

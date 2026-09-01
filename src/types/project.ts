@@ -7,7 +7,7 @@ export interface Project {
   progress: number;
   memberIds: string[];
   starredBy?: string[];
-  tag: string;
+  tag?: string;
   createdAt?: Timestamp | Date;
   createdBy?: string;
 }

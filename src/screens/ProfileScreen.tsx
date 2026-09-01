@@ -10,12 +10,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 
-// 1. استيراد Context
 import { useApp } from '../context/AppContext';
 
 interface ProfileScreenProps {
   onBack?: () => void;
-  onEditProfile?: () => void;
+  onEditProfile?: () => void; 
   onLogout?: () => void;
   onSecurityPress?: () => void;
   onHelpPress?: () => void;
@@ -28,29 +27,18 @@ export default function ProfileScreen({
   onSecurityPress,
   onHelpPress,
 }: ProfileScreenProps) {
-  // 2. سحب البيانات والدوال التلقائية من AppContext
-  const { user, profileData, userProjects, userTasks, loading, logout } = useApp();
+const { user, profileData, userProjects, userTasks, loading, logout, getInitials, getMemberColor } = useApp();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
 
-  const getInitials = (name?: string) => {
-    if (!name) return 'U';
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  };
-
-  // 3. حساب الإحصائيات من المجموعات الحية المجلوبة من AppContext
-  const tasksDoneCount = userTasks.filter((t) => t.status === 'done').length;
-  const pendingTasksCount = userTasks.filter(
-    (t) => t.status === 'todo' || t.status === 'inprogress'
-  ).length;
+  const tasksDoneCount = userTasks?.filter((t: any) => t.status === 'done').length || 0;
+  const pendingTasksCount = userTasks?.filter(
+    (t: any) => t.status === 'todo' || t.status === 'inprogress'
+  ).length || 0;
 
   const stats = [
-    { n: String(userProjects.length), l: 'Projects' },
+    { n: String(userProjects?.length || 0), l: 'Projects' },
     { n: String(tasksDoneCount), l: 'Tasks done' },
     { n: String(pendingTasksCount), l: 'Pending' },
   ];
@@ -64,6 +52,22 @@ export default function ProfileScreen({
   };
 
   const menuItems = [
+    {
+      icon: (
+        <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <Path
+            d="M8 1a2.5 2.5 0 010 5A2.5 2.5 0 018 1zM2 13.5c0-2.5 2.7-4.5 6-4.5s6 2 6 4.5"
+            stroke="#566551"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </Svg>
+      ),
+      label: 'Personal Information',
+      sub: 'Update name, job & company',
+      action: onEditProfile,
+      isToggle: false,
+    },
     {
       icon: (
         <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -156,6 +160,8 @@ export default function ProfileScreen({
     );
   }
 
+  const userColor = getMemberColor(user?.uid || profileData?.uid || '');
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -174,32 +180,21 @@ export default function ProfileScreen({
           </TouchableOpacity>
 
           <Text style={styles.headerTitle}>My Account</Text>
-
+{/* 
           <TouchableOpacity onPress={onEditProfile} style={styles.editBadge}>
             <Text style={styles.editBadgeText}>Edit</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         {/* Profile Hero */}
         <View style={styles.heroSection}>
           <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
+            <View style={[styles.avatar, { backgroundColor: userColor }]}>
               <Text style={styles.avatarText}>
                 {getInitials(profileData?.fullName || user?.displayName || '')}
               </Text>
             </View>
             <View style={styles.statusDot} />
-            <TouchableOpacity onPress={onEditProfile} style={styles.editAvatarBtn}>
-              <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <Path
-                  d="M7 1.5L8.5 3M2 8l.5-2L7.5 1.5 8.5 3 3 7.5 2 8z"
-                  stroke="#fff"
-                  strokeWidth="1"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </Svg>
-            </TouchableOpacity>
           </View>
 
           <Text style={styles.userName}>
@@ -390,19 +385,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#4ADE80',
     borderWidth: 2,
     borderColor: '#F8F9FA',
-  },
-  editAvatarBtn: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#566551',
-    borderWidth: 2,
-    borderColor: '#F8F9FA',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   userName: {
     fontSize: 20,

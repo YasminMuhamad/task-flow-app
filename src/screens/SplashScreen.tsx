@@ -28,7 +28,6 @@ export default function SplashScreen({ onDone }: Props) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Center Logo Lockup (هينزل في المنتصف بالضبط) */}
         <View style={styles.centerSection}>
           {/* Animated Mark Container */}
           <View style={styles.logoCard}>
@@ -67,7 +66,6 @@ export default function SplashScreen({ onDone }: Props) {
           </View>
         </View>
 
-        {/* Bottom Actions & Progress (هينزل تحت خالص) */}
         <View style={styles.bottomSection}>
           {phase === 'loading' ? (
             <View style={styles.progressContainer}>

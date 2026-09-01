@@ -35,6 +35,7 @@ import { ConfirmationModal } from '../components/ConfirmationModal';
 import { useApp } from '../context/AppContext';
 import { sendNotification } from '../services/notificationService';
 import EmptyStateScreen from '../components/EmptyStateScreen';
+import { BlurView } from 'expo-blur';
 
 interface Props {
   project: Project;
@@ -186,19 +187,28 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   const [filter, setFilter] = useState<FilterTab>('all');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
-
+  const [activeTab, setActiveTab] = useState<'general' | 'members'>('general');
+  
   // Modals visibility
   const [modalVisible, setModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
+  // const [editModalVisible, setEditModalVisible] = useState(false);
   const [editTitle, setEditTitle] = useState(initialProject.title || '');
   const [editTag, setEditTag] = useState(initialProject.tag || '');
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const [transferOwnershipModalVisible, setTransferOwnershipModalVisible] = useState(false);
+  const [selectedNewOwner, setSelectedNewOwner] = useState<string | null>(null);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [leaveAlertVisible, setLeaveAlertVisible] = useState(false);
+  const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+
   // Members Management State
-  const [membersModalVisible, setMembersModalVisible] = useState(false);
+  // const [membersModalVisible, setMembersModalVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [searchEmail, setSearchEmail] = useState('');
   const [searching, setSearching] = useState(false);
   const [foundUser, setFoundUser] = useState<SearchedUser | null>(null);
@@ -323,26 +333,95 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     }
   };
 
-  const handleMenuAction = (action: string) => {
-    setMenuVisible(false);
-    switch (action) {
-      case 'edit':
-        setEditModalVisible(true);
-        break;
-      case 'members':
-        setMembersModalVisible(true);
-        break;
-      case 'delete':
-        setDeleteConfirmVisible(true);
-        break;
-      case 'archived':
-        onOpenArchived();
-        break;
-      case 'starred':
-        handleToggleStar();
-        break;
+  const handleTransferOwnership = async () => {
+    if (!selectedNewOwner || !user?.uid) return;
+    try {
+      setIsTransferring(true);
+      const projectRef = doc(db, 'projects', currentProject.id);
+      await updateDoc(projectRef, {
+        createdBy: selectedNewOwner,
+      });
+
+      const senderName = usersMap[user.uid]?.fullName || 'A project member';
+      await sendNotification({
+        recipientId: selectedNewOwner,
+        senderId: user.uid,
+        type: 'project',
+        text: `${senderName} transferred the ownership of "${currentProject.title}" to you.`,
+        projectId: currentProject.id,
+      });
+
+      setIsTransferring(false);
+      setTransferOwnershipModalVisible(false);
+      setSelectedNewOwner(null);
+    } catch (error) {
+      console.error('Error transferring ownership:', error);
+      setIsTransferring(false);
     }
   };
+
+  const handleLeaveProject = async () => {
+    if (!user?.uid) return;
+    try {
+      setIsLeaving(true);
+      const projectRef = doc(db, 'projects', currentProject.id);
+      await updateDoc(projectRef, {
+        memberIds: arrayRemove(user.uid),
+      });
+
+      if (currentProject.createdBy && currentProject.createdBy !== user.uid) {
+        const leaverName = usersMap[user.uid]?.fullName || 'A member';
+        await sendNotification({
+          recipientId: currentProject.createdBy,
+          senderId: user.uid,
+          type: 'project',
+          text: `${leaverName} left the project "${currentProject.title}".`,
+          projectId: currentProject.id,
+        });
+      }
+
+      setIsLeaving(false);
+      setLeaveConfirmVisible(false);
+      onBack();
+    } catch (error) {
+      console.error('Error leaving project:', error);
+      setIsLeaving(false);
+    }
+  };
+
+const handleMenuAction = (action: string) => {
+  setMenuVisible(false);
+  switch (action) {
+    case 'edit':
+      setActiveTab('general');
+      setSettingsModalVisible(true);
+      break;
+    case 'members':
+      setActiveTab('members');
+      setSettingsModalVisible(true);
+      break;
+    case 'transfer_ownership':
+      setActiveTab('general');
+      setSettingsModalVisible(true);
+      break;
+    case 'leave':
+      if (isOwner) {
+        setLeaveAlertVisible(true);
+      } else {
+        setLeaveConfirmVisible(true);
+      }
+      break;
+    case 'delete':
+      setDeleteConfirmVisible(true);
+      break;
+    case 'archived':
+      onOpenArchived();
+      break;
+    case 'starred':
+      handleToggleStar();
+      break;
+  }
+};
 
   const handleDeleteProject = async () => {
     try {
@@ -374,27 +453,29 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
       });
 
       setIsUpdating(false);
-      setEditModalVisible(false);
+      setSettingsModalVisible(false);
     } catch (error) {
       console.error('Error updating project:', error);
       setIsUpdating(false);
     }
   };
 
-  const handleSearchUser = async (text: string) => {
-    setSearchEmail(text);
-    const trimmed = text.trim().toLowerCase();
+useEffect(() => {
+  const trimmed = searchEmail.trim().toLowerCase();
 
-    if (!trimmed) {
-      setFoundUser(null);
-      setNotFound(false);
-      return;
-    }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    setSearching(true);
-    setNotFound(false);
+  if (!trimmed || !emailRegex.test(trimmed)) {
     setFoundUser(null);
+    setNotFound(false);
+    setSearching(false);
+    return;
+  }
 
+  setSearching(true);
+  setNotFound(false);
+
+  const timer = setTimeout(async () => {
     try {
       const q = query(collection(db, 'users'), where('email', '==', trimmed));
       const snapshot = await getDocs(q);
@@ -409,48 +490,85 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
         });
       } else {
         setNotFound(true);
+        setFoundUser(null);
       }
     } catch (error) {
       console.error('Error searching user:', error);
     } finally {
       setSearching(false);
     }
-  };
+  }, 400);
 
-  const handleAddMember = async (userId: string) => {
-    try {
-      setMemberActionLoading(true);
-      const projectRef = doc(db, 'projects', currentProject.id);
-      await updateDoc(projectRef, {
-        memberIds: arrayUnion(userId),
+  return () => clearTimeout(timer);
+}, [searchEmail]);
+
+const handleAddMember = async (userId: string) => {
+  if (!user?.uid) return;
+
+  try {
+    setMemberActionLoading(true);
+    const projectRef = doc(db, 'projects', currentProject.id);
+    
+    await updateDoc(projectRef, {
+      memberIds: arrayUnion(userId),
+    });
+
+    const senderName = usersMap[user.uid]?.fullName || 'A team member';
+    await sendNotification({
+      recipientId: userId,
+      senderId: user.uid,
+      type: 'project',
+      text: `${senderName} added you to the project "${currentProject.title}".`,
+      projectId: currentProject.id,
+    });
+
+    const projectOwnerId = currentProject.createdBy;
+    if (projectOwnerId && projectOwnerId !== user.uid && projectOwnerId !== userId) {
+      await sendNotification({
+        recipientId: projectOwnerId,
+        senderId: user.uid,
+        type: 'project',
+        text: `${senderName} added ${usersMap[userId]?.fullName || 'a new member'} to "${currentProject.title}".`,
+        projectId: currentProject.id,
       });
-
-      setSearchEmail('');
-      setFoundUser(null);
-      setNotFound(false);
-    } catch (error) {
-      console.error('Error adding member:', error);
-    } finally {
-      setMemberActionLoading(false);
     }
-  };
 
-  const handleConfirmRemoveMember = async () => {
-    if (!memberToDelete) return;
+    setSearchEmail('');
+    setFoundUser(null);
+    setNotFound(false);
+  } catch (error) {
+    console.error('Error adding member:', error);
+  } finally {
+    setMemberActionLoading(false);
+  }
+};
 
-    try {
-      setMemberActionLoading(true);
-      const projectRef = doc(db, 'projects', currentProject.id);
-      await updateDoc(projectRef, {
-        memberIds: arrayRemove(memberToDelete.id),
-      });
-    } catch (error) {
-      console.error('Error removing member:', error);
-    } finally {
-      setMemberActionLoading(false);
-      setMemberToDelete(null);
-    }
-  };
+const handleConfirmRemoveMember = async () => {
+  if (!memberToDelete || !user?.uid) return;
+
+  try {
+    setMemberActionLoading(true);
+    const projectRef = doc(db, 'projects', currentProject.id);
+
+    await updateDoc(projectRef, {
+      memberIds: arrayRemove(memberToDelete.id),
+    });
+
+    const senderName = usersMap[user.uid]?.fullName || 'The project owner';
+    await sendNotification({
+      recipientId: memberToDelete.id,
+      senderId: user.uid,
+      type: 'project',
+      text: `${senderName} removed you from the project "${currentProject.title}".`,
+      projectId: currentProject.id,
+    });
+  } catch (error) {
+    console.error('Error removing member:', error);
+  } finally {
+    setMemberActionLoading(false);
+    setMemberToDelete(null);
+  }
+};
 
   const renderTaskItem = useCallback(
     ({ item }: { item: Task }) => (
@@ -492,39 +610,91 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
               </Svg>
             </TouchableOpacity>
 
-            <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-              <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-                <View style={styles.overlay}>
-                  <View style={styles.menuContainer}>
-                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('members')}>
-                      <Text style={styles.menuText}>Manage Members</Text>
-                    </TouchableOpacity>
+            <Modal 
+  visible={menuVisible} 
+  transparent 
+  animationType="fade" 
+  onRequestClose={() => setMenuVisible(false)}
+>
+  <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+      <BlurView intensity={25} tint="dark" style={styles.overlay}>
+      <View style={styles.menuContainer}>
 
-                    {isOwner && (
-                      <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('edit')}>
-                        <Text style={styles.menuText}>Edit Project</Text>
-                      </TouchableOpacity>
-                    )}
-                    {isOwner && (
-                      <>
-                        <View style={styles.divider} />
-                        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('delete')}>
-                          <Text style={[styles.menuText, { color: '#DC2626' }]}>Delete Project</Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('archived')}>
-                      <Text style={styles.menuText}>Archived Tasks</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('starred')}>
-                      <Text style={styles.menuText}>
-                        {isStarred ? '★ Unstar Project' : '☆ Star Project'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </Modal>
+        {/* 1. Star / Unstar Project */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('starred')}>
+          <View style={styles.menuIconContainer}>
+            {isStarred ? (
+              <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <Path d="M8 1.5l2.12 4.3 4.74.69-3.43 3.35.81 4.73L8 12.34l-4.24 2.23.81-4.73-3.43-3.35 4.74-.69L8 1.5z" fill="#EAB308" stroke="#EAB308" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </Svg>
+            ) : (
+              <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <Path d="M8 1.5l2.12 4.3 4.74.69-3.43 3.35.81 4.73L8 12.34l-4.24 2.23.81-4.73-3.43-3.35 4.74-.69L8 1.5z" stroke="#566551" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </Svg>
+            )}
+          </View>
+          <Text style={styles.menuText}>
+            {isStarred ? 'Unstar Project' : 'Star Project'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* 2. Archived Tasks */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('archived')}>
+          <View style={styles.menuIconContainer}>
+            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <Rect x="1.5" y="3.5" width="13" height="2.5" rx="1" stroke="#566551" strokeWidth="1.3"/>
+              <Path d="M3 6v5.5a1 1 0 001 1h8a1 1 0 001-1V6" stroke="#566551" strokeWidth="1.3" strokeLinecap="round"/>
+              <Path d="M6.5 9.5h3" stroke="#566551" strokeWidth="1.3" strokeLinecap="round"/>
+            </Svg>
+          </View>
+          <Text style={styles.menuText}>Archived Tasks</Text>
+        </TouchableOpacity>
+
+        {/* 3. Project Settings */}
+        <TouchableOpacity 
+          style={styles.menuItem} 
+          onPress={() => {
+            setMenuVisible(false);
+            setSettingsModalVisible(true);
+          }}
+        >
+          <View style={styles.menuIconContainer}>
+            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <Circle cx="8" cy="8" r="2.2" stroke="#566551" strokeWidth="1.3"/>
+              <Path d="M8 1.5v1.5M8 13v1.5M14.5 8H13M3 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5L3.4 3.4" stroke="#566551" strokeWidth="1.3" strokeLinecap="round"/>
+            </Svg>
+          </View>
+          <Text style={styles.menuText}>Project Settings</Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider} />
+        
+        {/* 4. Leave Project */}
+        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('leave')}>
+          <View style={styles.menuIconContainer}>
+            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <Path d="M6 14.5H3.5a1 1 0 01-1-1v-11a1 1 0 011-1H6M10.5 11.5l3-3.5-3-3.5M6.5 8h7" stroke="#DC2626" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
+          </View>
+          <Text style={[styles.menuText, { color: '#DC2626' }]}>Leave Project</Text>
+        </TouchableOpacity>
+
+        {/* 5. Delete Project (Owner Only) */}
+        {isOwner && (
+          <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('delete')}>
+            <View style={styles.menuIconContainer}>
+              <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <Path d="M2.5 4.5h11M6 4.5V2.8h4v1.7M6.5 7v4.5M9.5 7v4.5M3.8 4.5l.5 8.5a1 1 0 001 .9h5.4a1 1 0 001-.9l.5-8.5" stroke="#DC2626" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </Svg>
+            </View>
+            <Text style={[styles.menuText, { color: '#DC2626' }]}>Delete Project</Text>
+          </TouchableOpacity>
+        )}
+
+      </View>
+    </BlurView>
+  </TouchableWithoutFeedback>
+</Modal>
           </View>
         </View>
 
@@ -645,106 +815,245 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
         onTaskCreated={() => setModalVisible(false)}
       />
 
-      {/* Manage Members Modal */}
-      <Modal
-        visible={membersModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMembersModalVisible(false)}
-      >
-        <View style={styles.modalOverlayCenter}>
-          <View style={styles.dialogContainer}>
-            <Text style={styles.dialogTitle}>Manage Members</Text>
+      {/* Project Settings Modal (Merged Edit, Ownership & Members) */}
+<Modal
+  visible={settingsModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setSettingsModalVisible(false)}
+>
+  <BlurView intensity={25} tint="dark" style={styles.modalOverlayCenter}>
+    <View style={[styles.dialogContainer, { maxHeight: '85%' }]}>
+      
+      {/* Header */}
+      <View style={styles.modalHeader}>
+        <Text style={styles.dialogTitle}>Project Settings</Text>
+        <TouchableOpacity 
+          onPress={() => setSettingsModalVisible(false)}
+          style={styles.closeIconBtn}
+        >
+          <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <Path d="M18 6L6 18M6 6l12 12" stroke="#64748B" strokeWidth="2" strokeLinecap="round" />
+          </Svg>
+        </TouchableOpacity>
+      </View>
 
-            <Text style={styles.inputLabel}>Search by Email</Text>
-            <View style={styles.searchBoxContainer}>
-              <TextInput
-                style={styles.modalInputSearch}
-                value={searchEmail}
-                onChangeText={handleSearchUser}
-                placeholder="Enter user email..."
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              {searching && <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchSpinner} />}
-            </View>
+      {/* Segmented Control / Tabs */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'general' && styles.activeTabButton]}
+          onPress={() => setActiveTab('general')}
+        >
+          <Text style={[styles.tabText, activeTab === 'general' && styles.activeTabText]}>General</Text>
+        </TouchableOpacity>
 
-            {notFound && <Text style={styles.notFoundText}>User not found</Text>}
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'members' && styles.activeTabButton]}
+          onPress={() => setActiveTab('members')}
+        >
+          <Text style={[styles.tabText, activeTab === 'members' && styles.activeTabText]}>
+            Members ({currentProject.memberIds?.length || 0})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-            {foundUser && (
-              <View style={styles.selectCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.selectName}>{foundUser.name}</Text>
-                  <Text style={styles.selectEmail}>{foundUser.email}</Text>
-                </View>
-                {currentProject.memberIds?.includes(foundUser.id) ? (
-                  <Text style={styles.alreadyAddedText}>Already added</Text>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.addMemberBtn}
-                    onPress={() => handleAddMember(foundUser.id)}
-                    disabled={memberActionLoading}
-                  >
-                    {memberActionLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.addMemberBtnText}>Add</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
+      {/* Tab 1: General Settings & Transfer Ownership */}
+      {activeTab === 'general' ? (
+        <ScrollView style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
+          <Text style={styles.inputLabel}>Title</Text>
+          <TextInput
+            style={styles.modalInput}
+            value={editTitle}
+            onChangeText={setEditTitle}
+            placeholder="Project Title"
+            placeholderTextColor="#94A3B8"
+            editable={isOwner}
+          />
 
-            <Text style={[styles.inputLabel, { marginTop: 16 }]}>
-              Project Members ({currentProject.memberIds?.length || 0})
-            </Text>
-            <ScrollView style={styles.membersListScroll} nestedScrollEnabled>
-              {currentProject.memberIds?.map((uid) => {
-                const info = usersMap[uid];
-                const name = info?.fullName || 'User';
-                const isThisMemberOwner = uid === currentProject.createdBy;
+          <Text style={styles.inputLabel}>Tag</Text>
+          <TextInput
+            style={styles.modalInput}
+            value={editTag}
+            onChangeText={setEditTag}
+            placeholder="Tag (e.g., Mobile, Web)"
+            placeholderTextColor="#94A3B8"
+            editable={isOwner}
+          />
 
-                return (
-                  <View key={uid} style={styles.memberRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.memberName}>
-                        {name} {isThisMemberOwner ? '(Owner)' : ''}
-                      </Text>
-                    </View>
+          {isOwner && (
+            <View style={styles.transferSection}>
+              <Text style={styles.dangerZoneTitle}>Transfer Ownership</Text>
+              <Text style={styles.dangerZoneSubtext}>
+                Select a team member to take full ownership of this project.
+              </Text>
 
-                    {isOwner && !isThisMemberOwner && (
+              <ScrollView style={styles.ownerPickerList} nestedScrollEnabled>
+                {currentProject.memberIds
+                  ?.filter((uid) => uid !== user?.uid)
+                  .map((uid) => {
+                    const info = usersMap[uid];
+                    const name = info?.fullName || 'User';
+                    const email = info?.email || '';
+                    const isSelected = selectedNewOwner === uid;
+
+                    return (
                       <TouchableOpacity
-                        onPress={() => setMemberToDelete({ id: uid, name })}
-                        style={styles.removeMemberBtn}
+                        key={uid}
+                        style={[
+                          styles.ownerSelectRow,
+                          isSelected && styles.ownerSelectRowActive,
+                        ]}
+                        onPress={() => setSelectedNewOwner(uid)}
                       >
-                        <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <Path d="M3 3l8 8M11 3l-8 8" stroke="#DC2626" strokeWidth="1.8" strokeLinecap="round" />
-                        </Svg>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.memberName, isSelected && { color: COLORS.primary, fontWeight: '700' }]}>
+                            {name}
+                          </Text>
+                          {email ? <Text style={styles.selectEmail}>{email}</Text> : null}
+                        </View>
+                        {isSelected && (
+                          <View style={styles.radioSelectedDot} />
+                        )}
                       </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </ScrollView>
+                    );
+                  })}
+              </ScrollView>
 
-            <View style={styles.dialogActions}>
-              <TouchableOpacity
-                style={[styles.dialogBtn, styles.cancelBtn]}
-                onPress={() => {
-                  setMembersModalVisible(false);
-                  setSearchEmail('');
-                  setFoundUser(null);
-                  setNotFound(false);
-                }}
-              >
-                <Text style={styles.cancelBtnText}>Close</Text>
-              </TouchableOpacity>
+              {selectedNewOwner && (
+                <TouchableOpacity
+                  style={[styles.dialogBtn, styles.transferBtn]}
+                  onPress={handleTransferOwnership}
+                  disabled={isTransferring}
+                >
+                  {isTransferring ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.transferBtnText}>Confirm Transfer to Selected Member</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
+          )}
+
+          <View style={[styles.dialogActions, { marginTop: 20 }]}>
+            <TouchableOpacity
+              style={[styles.dialogBtn, styles.cancelBtn]}
+              onPress={() => setSettingsModalVisible(false)}
+              disabled={isUpdating}
+            >
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.dialogBtn, styles.saveBtn]}
+              onPress={handleUpdateProject}
+              disabled={isUpdating}
+            >
+              {isUpdating ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.saveBtnText}>Save Changes</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      ) : (
+        /* Tab 2: Manage Members */
+        <View style={{ flex: 1, marginTop: 12 }}>
+          <Text style={styles.inputLabel}>Search by Email</Text>
+          <View style={styles.searchBoxContainer}>
+            <TextInput
+              style={styles.modalInputSearch}
+              value={searchEmail}
+              onChangeText={setSearchEmail}
+              placeholder="Enter user email..."
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            {searching && <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchSpinner} />}
+          </View>
+
+          {notFound && <Text style={styles.notFoundText}>User not found</Text>}
+
+          {foundUser && (
+            <View style={styles.selectCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.selectName}>{foundUser.name}</Text>
+                <Text style={styles.selectEmail}>{foundUser.email}</Text>
+              </View>
+              {currentProject.memberIds?.includes(foundUser.id) ? (
+                <Text style={styles.alreadyAddedText}>Already added</Text>
+              ) : (
+                <TouchableOpacity
+                  style={styles.addMemberBtn}
+                  onPress={() => handleAddMember(foundUser.id)}
+                  disabled={memberActionLoading}
+                >
+                  {memberActionLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.addMemberBtnText}>Add</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          <Text style={[styles.inputLabel, { marginTop: 16 }]}>Project Members</Text>
+          <ScrollView style={styles.membersListScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {currentProject.memberIds?.map((uid) => {
+              const info = usersMap[uid];
+              const name = info?.fullName || 'User';
+              const email = info?.email || '';
+              const isThisMemberOwner = uid === currentProject.createdBy;
+              const initials = name.slice(0, 2).toUpperCase();
+
+              return (
+                <View key={uid} style={styles.memberCardRow}>
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarText}>{initials}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.memberName}>
+                      {name} {isThisMemberOwner ? '(Owner)' : ''}
+                    </Text>
+                    {email ? <Text style={styles.selectEmail}>{email}</Text> : null}
+                  </View>
+
+                  {isOwner && !isThisMemberOwner && (
+                    <TouchableOpacity
+                      onPress={() => setMemberToDelete({ id: uid, name })}
+                      style={styles.removeMemberBtn}
+                    >
+                      <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <Path d="M3 3l8 8M11 3l-8 8" stroke="#DC2626" strokeWidth="1.8" strokeLinecap="round" />
+                      </Svg>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.dialogActions}>
+            <TouchableOpacity
+              style={[styles.dialogBtn, styles.cancelBtn]}
+              onPress={() => {
+                setSettingsModalVisible(false);
+                setSearchEmail('');
+                setFoundUser(null);
+                setNotFound(false);
+              }}
+            >
+              <Text style={styles.cancelBtnText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-
+      )}
+    </View>
+  </BlurView>
+</Modal>
       {/* Confirmation Modals */}
       <ConfirmationModal
         visible={deleteConfirmVisible}
@@ -767,33 +1076,104 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
         onCancel={() => setMemberToDelete(null)}
       />
 
-      {/* Custom Edit Project Modal */}
-      <Modal visible={editModalVisible} transparent animationType="fade" onRequestClose={() => setEditModalVisible(false)}>
+      {/* Leave Alert for Owner */}
+      <ConfirmationModal
+        visible={leaveAlertVisible}
+        title="Action Required"
+        message="You are the owner of this project. You must transfer ownership to another member before leaving."
+        confirmText="Transfer Ownership"
+        confirmBtnColor={COLORS.primary}
+        onConfirm={() => {
+          setLeaveAlertVisible(false);
+          setSettingsModalVisible(true);
+        }}
+        onCancel={() => setLeaveAlertVisible(false)}
+      />
+
+      {/* Leave Confirmation for Regular Member */}
+      <ConfirmationModal
+        visible={leaveConfirmVisible}
+        title="Leave Project"
+        message={`Are you sure you want to leave "${currentProject.title}"? You will lose access to all tasks.`}
+        confirmText="Leave"
+        confirmBtnColor="#DC2626"
+        loading={isLeaving}
+        onConfirm={handleLeaveProject}
+        onCancel={() => setLeaveConfirmVisible(false)}
+      />
+
+      {/* Transfer Ownership Modal */}
+      {/* <Modal
+        visible={transferOwnershipModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTransferOwnershipModalVisible(false)}
+      >
         <View style={styles.modalOverlayCenter}>
           <View style={styles.dialogContainer}>
-            <Text style={styles.dialogTitle}>Edit Project</Text>
+            <Text style={styles.dialogTitle}>Transfer Ownership</Text>
+            <Text style={[styles.inputLabel, { marginBottom: 12 }]}>
+              Select a member to become the new project owner:
+            </Text>
 
-            <Text style={styles.inputLabel}>Title</Text>
-            <TextInput style={styles.modalInput} value={editTitle} onChangeText={setEditTitle} placeholder="Project Title" />
+            <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
+              {currentProject.memberIds
+                ?.filter((uid) => uid !== user?.uid)
+                .map((uid) => {
+                  const info = usersMap[uid];
+                  const name = info?.fullName || 'User';
+                  const isSelected = selectedNewOwner === uid;
 
-            <Text style={styles.inputLabel}>Tag</Text>
-            <TextInput style={styles.modalInput} value={editTag} onChangeText={setEditTag} placeholder="Tag (e.g., Mobile, Web)" />
+                  return (
+                    <TouchableOpacity
+                      key={uid}
+                      style={[
+                        styles.memberRow,
+                        isSelected && { backgroundColor: '#F1F5F9', borderRadius: 8, paddingHorizontal: 8 },
+                      ]}
+                      onPress={() => setSelectedNewOwner(uid)}
+                    >
+                      <Text style={[styles.memberName, isSelected && { color: COLORS.primary, fontWeight: '700' }]}>
+                        {name}
+                      </Text>
+                      {isSelected && (
+                        <Text style={{ color: COLORS.primary, fontWeight: '700' }}>Selected</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
 
             <View style={styles.dialogActions}>
               <TouchableOpacity
                 style={[styles.dialogBtn, styles.cancelBtn]}
-                onPress={() => setEditModalVisible(false)}
-                disabled={isUpdating}
+                onPress={() => {
+                  setTransferOwnershipModalVisible(false);
+                  setSelectedNewOwner(null);
+                }}
+                disabled={isTransferring}
               >
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.dialogBtn, styles.saveBtn]} onPress={handleUpdateProject} disabled={isUpdating}>
-                {isUpdating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveBtnText}>Save</Text>}
+              <TouchableOpacity
+                style={[
+                  styles.dialogBtn,
+                  styles.saveBtn,
+                  !selectedNewOwner && { opacity: 0.5 },
+                ]}
+                onPress={handleTransferOwnership}
+                disabled={!selectedNewOwner || isTransferring}
+              >
+                {isTransferring ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Transfer</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal> */}
     </View>
   );
 }
@@ -857,19 +1237,28 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  menuText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1E293B',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 4,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 10,
+  paddingHorizontal: 14,
+},
+menuIconContainer: {
+  width: 20,
+  height: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 10,
+},
+menuText: {
+  fontSize: 14,
+  fontWeight: '500',
+  color: '#334155',
+},
+divider: {
+  height: 1,
+  backgroundColor: '#E2E8F0',
+  marginVertical: 4,
+},
   headerFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1299,5 +1688,115 @@ const styles = StyleSheet.create({
   },
   removeMemberBtn: {
     padding: 6,
+  },
+  tabContainer: {
+  flexDirection: 'row',
+  backgroundColor: '#F1F5F9',
+  borderRadius: 8,
+  padding: 4,
+  marginTop: 12,
+  marginBottom: 8,
+},
+tabButton: {
+  flex: 1,
+  paddingVertical: 8,
+  alignItems: 'center',
+  borderRadius: 6,
+},
+activeTabButton: {
+  backgroundColor: '#FFFFFF',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.1,
+  shadowRadius: 2,
+  elevation: 2,
+},
+tabText: {
+  fontSize: 14,
+  color: '#64748B',
+  fontWeight: '500',
+},
+activeTabText: {
+  color: COLORS.primary,
+  fontWeight: '600',
+},
+  // Modal Container
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  closeIconBtn: {
+    padding: 4,
+  },
+  // Transfer Section Inside General Tab
+  transferSection: {
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  dangerZoneTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#E11D48',
+    marginBottom: 4,
+  },
+  dangerZoneSubtext: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 10,
+  },
+  ownerPickerList: {
+    maxHeight: 140,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 6,
+  },
+  ownerSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  ownerSelectRowActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: COLORS.primary || '#2563EB',
+  },
+  radioSelectedDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.primary || '#2563EB',
+  },
+  transferBtn: {
+    backgroundColor: '#E11D48',
+    marginTop: 10,
+  },
+  transferBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  memberCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  avatarCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

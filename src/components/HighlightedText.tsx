@@ -1,11 +1,11 @@
 import React from 'react';
-import { Text, TextStyle } from 'react-native';
+import { StyleProp, Text, TextStyle } from 'react-native';
 
 interface HighlightedTextProps {
   text: string;
   query: string;
-  style?: TextStyle;
-  highlightStyle?: TextStyle;
+  style?: StyleProp<TextStyle>;
+  highlightStyle?: StyleProp<TextStyle>;
 }
 
 export const HighlightedText: React.FC<HighlightedTextProps> = ({

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react';
-import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+import { User, onAuthStateChanged, signOut, updateProfile as updateAuthProfile } from 'firebase/auth';
 import {
   doc,
   collection,
@@ -8,6 +8,7 @@ import {
   onSnapshot,
   documentId,
   updateDoc,
+  setDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
@@ -53,6 +54,7 @@ interface AppContextType {
   getInitials: (name?: string) => string;
   getMemberColor: (str: string) => string;
   logout: () => Promise<void>;
+  updateProfile: (data: { fullName?: string; jobTitle?: string; company?: string }) => Promise<void>;
   markNotificationAsRead: (notificationId: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
   clearAllNotifications: () => Promise<void>;
@@ -86,8 +88,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   usersMapRef.current = usersMap;
 
   const userInitials = useMemo(() => {
-    return getInitials(profileData?.fullName);
-  }, [profileData?.fullName]);
+    return getInitials(profileData?.fullName || user?.displayName || '');
+  }, [profileData?.fullName, user?.displayName]);
 
   // 1. Authentication listener
   useEffect(() => {
@@ -262,6 +264,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, [user]);
 
+  const updateProfileData = async (data: { fullName?: string; jobTitle?: string; company?: string }) => {
+    if (!user) return;
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+
+      await setDoc(userRef, data, { merge: true });
+
+      if (data.fullName && auth.currentUser) {
+        await updateAuthProfile(auth.currentUser, {
+          displayName: data.fullName,
+        });
+      }
+    } catch (error) {
+      console.error('Error updating profile in Context:', error);
+      throw error;
+    }
+  };
+
   const markNotificationAsRead = async (notificationId: string) => {
     try {
       const notifRef = doc(db, 'notifications', notificationId);
@@ -325,6 +346,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getInitials,
         getMemberColor,
         logout,
+        updateProfile: updateProfileData,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         clearAllNotifications,

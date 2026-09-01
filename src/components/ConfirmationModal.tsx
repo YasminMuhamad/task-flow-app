@@ -2,6 +2,7 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { COLORS } from '../constants/theme';
+import { BlurView } from 'expo-blur';
 
 interface ConfirmationModalProps {
   visible: boolean;
@@ -28,7 +29,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 }) => {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.modalOverlayCenter}>
+      <BlurView  intensity={25} tint="dark" style={styles.modalOverlayCenter}>
         <View style={styles.dialogContainer}>
           <Text style={styles.dialogTitle}>{title}</Text>
           <Text style={styles.dialogMessage}>{message}</Text>
@@ -54,7 +55,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </BlurView>
     </Modal>
   );
 };

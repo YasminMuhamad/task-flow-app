@@ -57,7 +57,7 @@ export default function DashboardScreen({
   }, [userProjects, active, user?.uid]);
 
   const displayedProjects = useMemo(() => {
-    return showAll ? filteredProjects : filteredProjects.slice(0, 3);
+    return showAll ? filteredProjects : filteredProjects.slice(0, 4);
   }, [filteredProjects, showAll]);
 
   const emptyVariant: EmptyStateVariant = active === 'all' ? 'projects' : active;
@@ -74,7 +74,7 @@ export default function DashboardScreen({
         {/* Section label */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Active Projects</Text>
-          {filteredProjects.length > 3 && (
+          {filteredProjects.length > 4 && (
             <TouchableOpacity onPress={() => setShowAll(prev => !prev)}>
               <Text style={styles.seeAllText}>
                 {showAll ? 'Show less ←' : 'See all →'}

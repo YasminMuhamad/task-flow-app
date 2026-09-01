@@ -28,6 +28,7 @@ import { COLORS } from '../constants/theme';
 import { TaskPriority, TaskStatus } from '../types/task';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { sendNotification } from '../services/notificationService';
+import { BlurView } from 'expo-blur';
 
 interface CreateTaskModalProps {
   visible: boolean;
@@ -202,7 +203,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       onRequestClose={handleClose}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.overlay}>
+       <BlurView intensity={25} tint="dark" style={styles.overlay}>
           {/* Backdrop Touch Area */}
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
@@ -426,7 +427,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
-        </View>
+        </BlurView>
       </TouchableWithoutFeedback>
     </Modal>
   );
