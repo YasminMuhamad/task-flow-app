@@ -15,19 +15,19 @@ import {
   AtSign,
   Clock,
   UserPlus,
-  BellOff,
   Folder,
   Bell,
+  BellOff,
 } from "lucide-react-native";
 import { AppNotification, NotificationType } from "../types/notification";
 import { useApp } from "../context/AppContext";
+import { useTheme } from "../context/ThemeContext";
 import { formatTimeAgo, getMillis } from "../utils/date";
 
 interface Props {
   onBack: () => void;
 }
 
-// Configuration for notification types with icons and colors
 const TYPE_CONFIG: Record<
   NotificationType,
   { icon: React.ElementType; color: string }
@@ -46,10 +46,10 @@ interface NotificationCardProps {
   usersMap: Record<string, any>;
   userProjects: any[];
   getInitials: (name?: string) => string;
+  getMemberColor: (userId: string) => string;
   onMarkAsRead: (id: string) => void;
 }
 
-// Grouping helper function
 interface NotificationSection {
   title: string;
   data: AppNotification[];
@@ -59,18 +59,12 @@ const groupNotificationsByDate = (
   notifications: AppNotification[]
 ): NotificationSection[] => {
   const now = new Date();
-
-  // Start of today (00:00:00)
   const startOfToday = new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate()
   ).getTime();
-
-  // Start of yesterday
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-
-  // Start of this week (last 7 days)
   const startOfThisWeek = startOfToday - 6 * 24 * 60 * 60 * 1000;
 
   const groups: Record<string, AppNotification[]> = {
@@ -82,7 +76,6 @@ const groupNotificationsByDate = (
 
   notifications.forEach((item) => {
     const time = getMillis(item.createdAt);
-
     if (time >= startOfToday) {
       groups["Today"].push(item);
     } else if (time >= startOfYesterday) {
@@ -102,25 +95,28 @@ const groupNotificationsByDate = (
     }));
 };
 
-// Optimized individual notification card component
 const NotificationCard = React.memo(
   ({
     item,
     usersMap,
     userProjects,
     getInitials,
+    getMemberColor,
     onMarkAsRead,
   }: NotificationCardProps) => {
+    const { colors, isDark } = useTheme();
     const config = TYPE_CONFIG[item.type] || TYPE_CONFIG.task;
     const IconComponent = config.icon;
 
-    // Get sender initials
     const sender = item.senderId ? usersMap[item.senderId] : null;
-    const senderInitials = sender ? getInitials(sender.fullName) : "UN";
+    const senderName = sender?.fullName;
+    const senderInitials = getInitials(senderName);
+    const senderBgColor = getMemberColor(item.senderId || "");
 
-    // Find project name based on project ID
     const project = userProjects?.find((p) => p.id === item.projectId);
     const projectName = project?.title || item.projectId || "Project";
+
+    const isDeadline = item.type === "deadline";
 
     return (
       <TouchableOpacity
@@ -128,45 +124,47 @@ const NotificationCard = React.memo(
         onPress={() => onMarkAsRead(item.id)}
         style={[
           styles.card,
-          item.read ? styles.cardRead : styles.cardUnread,
+          {
+            backgroundColor: item.read ? colors.card : colors.secondary,
+            borderColor: item.read ? colors.border : (isDark ? colors.border : "#a8bece"),
+          },
         ]}
       >
-        {/* Avatar Container */}
         <View style={styles.avatarContainer}>
           <View
             style={[
               styles.avatar,
               {
-                backgroundColor:
-                  item.type === "deadline" ? "#FEF3C7" : "#C5D5E4",
+                backgroundColor: isDeadline
+                  ? (isDark ? "#451A1A" : "#FEF3C7")
+                  : senderBgColor,
               },
             ]}
           >
             <Text
               style={[
                 styles.avatarText,
-                { color: item.type === "deadline" ? "#D97706" : "#1E293B" },
+                { color: isDeadline ? "#D97706" : "#FFFFFF" },
               ]}
             >
-              {item.type === "deadline" ? "⏰" : senderInitials}
+              {isDeadline ? "⏰" : senderInitials}
             </Text>
           </View>
           <View
             style={[
               styles.badge,
-              { borderColor: item.read ? "#F8F9FA" : "#C5D5E4" },
+              { borderColor: item.read ? colors.background : colors.secondary },
             ]}
           >
             <IconComponent size={10} color={config.color} />
           </View>
         </View>
 
-        {/* Text Details */}
         <View style={styles.contentContainer}>
           <Text
             style={[
               styles.notificationText,
-              { fontWeight: item.read ? "400" : "600" },
+              { color: colors.text, fontWeight: item.read ? "400" : "600" },
             ]}
           >
             {item.text}
@@ -178,21 +176,20 @@ const NotificationCard = React.memo(
                   styles.projectTag,
                   {
                     backgroundColor: item.read
-                      ? "#F1F5F9"
+                      ? (isDark ? colors.secondary : "#F1F5F9")
                       : "rgba(86,101,81,0.12)",
                   },
                 ]}
               >
-                <Text style={styles.projectTagText}>{projectName}</Text>
+                <Text style={[styles.projectTagText, { color: colors.primary }]}>{projectName}</Text>
               </View>
             )}
-            <Text style={styles.timeText}>{formatTimeAgo(item.createdAt)}</Text>
+            <Text style={[styles.timeText, { color: colors.textMuted }]}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
         </View>
 
-        {/* Unread Indicator Dot */}
         <View style={styles.dotContainer}>
-          {!item.read && <View style={styles.unreadDot} />}
+          {!item.read && <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />}
         </View>
       </TouchableOpacity>
     );
@@ -200,7 +197,7 @@ const NotificationCard = React.memo(
 );
 
 export default function NotificationsScreen({ onBack }: Props) {
-  // Consume data and actions from AppContext
+  const { colors, isDark } = useTheme();
   const {
     notifications,
     markNotificationAsRead,
@@ -208,12 +205,12 @@ export default function NotificationsScreen({ onBack }: Props) {
     clearAllNotifications,
     usersMap,
     getInitials,
+    getMemberColor,
     userProjects,
   } = useApp();
 
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
-  // Compute unread count and grouped list
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const sections = useMemo(() => {
@@ -231,31 +228,36 @@ export default function NotificationsScreen({ onBack }: Props) {
       usersMap={usersMap}
       userProjects={userProjects}
       getInitials={getInitials}
+      getMemberColor={getMemberColor}
       onMarkAsRead={markNotificationAsRead}
     />
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
-      {/* Header section */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <ChevronLeft size={20} color="#1E293B" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <View style={[styles.headerTop, { justifyContent: 'space-between' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity 
+              onPress={onBack} 
+              style={[styles.backButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <ChevronLeft size={20} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
+          </View>
+          
           {unreadCount > 0 ? (
             <TouchableOpacity onPress={markAllNotificationsAsRead}>
-              <Text style={styles.markReadText}>Mark all read</Text>
+              <Text style={[styles.markReadText, { color: colors.primary }]}>Mark all read</Text>
             </TouchableOpacity>
           ) : (
             <View style={{ width: 70 }} />
           )}
         </View>
 
-        {/* Filter Pills */}
         <View style={styles.filterRow}>
           {(["all", "unread"] as const).map((f) => {
             const isActive = filter === f;
@@ -266,16 +268,16 @@ export default function NotificationsScreen({ onBack }: Props) {
                 style={[
                   styles.filterPill,
                   isActive
-                    ? styles.filterPillActive
-                    : styles.filterPillInactive,
+                    ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                    : { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
                 <Text
                   style={[
                     styles.filterText,
                     isActive
-                      ? styles.filterTextActive
-                      : styles.filterTextInactive,
+                      ? { color: colors.white }
+                      : { color: colors.textMuted },
                   ]}
                 >
                   {f === "all" ? "All" : "Unread"}
@@ -287,11 +289,11 @@ export default function NotificationsScreen({ onBack }: Props) {
                       {
                         backgroundColor: isActive
                           ? "rgba(255,255,255,0.25)"
-                          : "#566551",
+                          : colors.primary,
                       },
                     ]}
                   >
-                    <Text style={styles.badgeCountText}>{unreadCount}</Text>
+                    <Text style={[styles.badgeCountText, { color: colors.white }]}>{unreadCount}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -300,25 +302,24 @@ export default function NotificationsScreen({ onBack }: Props) {
         </View>
       </View>
 
-      {/* Grouped Notifications List */}
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         renderSectionHeader={({ section: { title } }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>{title}</Text>
+          <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
+            <Text style={[styles.sectionHeaderText, { color: colors.textMuted }]}>{title}</Text>
           </View>
         )}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconBg}>
-              <BellOff size={24} color="#566551" />
+            <View style={[styles.emptyIconBg, { backgroundColor: colors.secondary }]}>
+              <BellOff size={24} color={colors.primary} />
             </View>
-            <Text style={styles.emptyTitle}>All caught up!</Text>
-            <Text style={styles.emptySubtitle}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>All caught up!</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
               No notifications to display
             </Text>
           </View>
@@ -331,7 +332,7 @@ export default function NotificationsScreen({ onBack }: Props) {
                 onPress={clearAllNotifications}
                 activeOpacity={0.7}
               >
-                <Text style={styles.clearAllText}>Clear All Notifications</Text>
+                <Text style={[styles.clearAllText, { color: colors.primary }]}>Clear All Notifications</Text>
               </TouchableOpacity>
             </View>
           ) : null
@@ -344,41 +345,34 @@ export default function NotificationsScreen({ onBack }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 12,
     borderBottomWidth: 1.5,
-    borderBottomColor: "#E2E8F0",
-    backgroundColor: "#F8F9FA",
   },
   headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginBottom: 12,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
-    borderColor: "#E2E8F0",
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#1E293B",
   },
   markReadText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#566551",
   },
   filterRow: {
     flexDirection: "row",
@@ -393,23 +387,9 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     gap: 6,
   },
-  filterPillActive: {
-    backgroundColor: "#566551",
-    borderColor: "#566551",
-  },
-  filterPillInactive: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E8F0",
-  },
   filterText: {
     fontSize: 12,
     fontWeight: "600",
-  },
-  filterTextActive: {
-    color: "#FFFFFF",
-  },
-  filterTextInactive: {
-    color: "#64748B",
   },
   badgeCount: {
     width: 16,
@@ -419,7 +399,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   badgeCountText: {
-    color: "#FFFFFF",
     fontSize: 9,
     fontWeight: "700",
   },
@@ -430,12 +409,10 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingTop: 14,
     paddingBottom: 6,
-    backgroundColor: "#F8F9FA",
   },
   sectionHeaderText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#64748B",
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
@@ -446,16 +423,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 8,
-  },
-  cardUnread: {
-    backgroundColor: "#C5D5E4",
     borderWidth: 1.5,
-    borderColor: "#a8bece",
-  },
-  cardRead: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
   },
   avatarContainer: {
     position: "relative",
@@ -478,17 +446,16 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#FFFFFF",
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FFFFFF",
   },
   contentContainer: {
     flex: 1,
   },
   notificationText: {
     fontSize: 14,
-    color: "#1E293B",
     lineHeight: 18,
     marginBottom: 4,
   },
@@ -505,11 +472,9 @@ const styles = StyleSheet.create({
   projectTagText: {
     fontSize: 11,
     fontWeight: "500",
-    color: "#566551",
   },
   timeText: {
     fontSize: 11,
-    color: "#94A3B8",
   },
   dotContainer: {
     marginTop: 6,
@@ -520,7 +485,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#566551",
   },
   emptyContainer: {
     alignItems: "center",
@@ -532,7 +496,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: "#C5D5E4",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
@@ -540,11 +503,9 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#1E293B",
   },
   emptySubtitle: {
     fontSize: 12,
-    color: "#94A3B8",
   },
   footerButtonContainer: {
     marginTop: 12,
@@ -559,7 +520,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   clearAllText: {
-    color: "#566551",
     fontSize: 13,
     fontWeight: "600",
   },

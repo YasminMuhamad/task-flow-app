@@ -11,10 +11,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 
 import { useApp } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
+import { BlurView } from 'expo-blur';
 
 interface ProfileScreenProps {
   onBack?: () => void;
-  onEditProfile?: () => void; 
+  onEditProfile?: () => void;
   onLogout?: () => void;
   onSecurityPress?: () => void;
   onHelpPress?: () => void;
@@ -27,10 +29,13 @@ export default function ProfileScreen({
   onSecurityPress,
   onHelpPress,
 }: ProfileScreenProps) {
-const { user, profileData, userProjects, userTasks, loading, logout, getInitials, getMemberColor } = useApp();
+  const { user, profileData, userProjects, userTasks, loading, logout, getInitials, getMemberColor } = useApp();
+  const { isDark, colors, toggleTheme } = useTheme();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [isDarkTheme, setIsDarkTheme] = useState(false);
+  // State for "Coming Soon" modal
+  const [comingSoonVisible, setComingSoonVisible] = useState(false);
+  const [activeFeature, setActiveFeature] = useState('');
 
   const tasksDoneCount = userTasks?.filter((t: any) => t.status === 'done').length || 0;
   const pendingTasksCount = userTasks?.filter(
@@ -51,13 +56,23 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
     }
   };
 
+  // Function to handle "Coming Soon" features
+  const handleComingSoon = (featureName: string, customAction?: () => void) => {
+    if (customAction) {
+      customAction();
+    } else {
+      setActiveFeature(featureName);
+      setComingSoonVisible(true);
+    }
+  };
+
   const menuItems = [
     {
       icon: (
         <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <Path
             d="M8 1a2.5 2.5 0 010 5A2.5 2.5 0 018 1zM2 13.5c0-2.5 2.7-4.5 6-4.5s6 2 6 4.5"
-            stroke="#566551"
+            stroke={colors.primary}
             strokeWidth="1.5"
             strokeLinecap="round"
           />
@@ -73,7 +88,7 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
         <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <Path
             d="M8 1a2.5 2.5 0 010 5A2.5 2.5 0 018 1zM2 13.5c0-2.5 2.7-4.5 6-4.5s6 2 6 4.5"
-            stroke="#566551"
+            stroke={colors.primary}
             strokeWidth="1.5"
             strokeLinecap="round"
           />
@@ -88,21 +103,22 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
     {
       icon: (
         <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <Circle cx="8" cy="8" r="3" stroke="#566551" strokeWidth="1.5" />
+          <Circle cx="8" cy="8" r="3" stroke={colors.primary} strokeWidth="1.5" />
           <Path
             d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.2 3.2l1 1M11.8 11.8l1 1M11.8 3.2l-1 1M4.2 11.8l-1 1"
-            stroke="#566551"
+            stroke={colors.primary}
             strokeWidth="1.5"
             strokeLinecap="round"
           />
         </Svg>
       ),
       label: 'Theme',
-      sub: isDarkTheme ? 'Dark' : 'Light',
-      action: () => setIsDarkTheme((prev) => !prev),
+      sub: isDark ? 'Dark' : 'Light',
+      action: toggleTheme,
       isToggle: true,
-      toggleValue: isDarkTheme,
+      toggleValue: isDark,
     },
+    // Additional menu items that are "Coming Soon"
     {
       icon: (
         <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -112,39 +128,39 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
             width="8"
             height="7"
             rx="1.5"
-            stroke="#566551"
+            stroke={colors.primary}
             strokeWidth="1.5"
           />
           <Path
             d="M5.5 7V5a2.5 2.5 0 015 0v2"
-            stroke="#566551"
+            stroke={colors.primary}
             strokeWidth="1.5"
             strokeLinecap="round"
           />
-          <Circle cx="8" cy="10.5" r="1" fill="#566551" />
+          <Circle cx="8" cy="10.5" r="1" fill={colors.primary} />
         </Svg>
       ),
       label: 'Security & Password',
       sub: 'Manage password & auth',
-      action: onSecurityPress,
+      action: () => handleComingSoon('Security & Password', onSecurityPress),
       isToggle: false,
     },
     {
       icon: (
         <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <Circle cx="8" cy="8" r="6" stroke="#566551" strokeWidth="1.5" />
+          <Circle cx="8" cy="8" r="6" stroke={colors.primary} strokeWidth="1.5" />
           <Path
             d="M8 7v4"
-            stroke="#566551"
+            stroke={colors.primary}
             strokeWidth="1.8"
             strokeLinecap="round"
           />
-          <Circle cx="8" cy="5" r="0.8" fill="#566551" />
+          <Circle cx="8" cy="5" r="0.8" fill={colors.primary} />
         </Svg>
       ),
       label: 'Help & Support',
       sub: 'FAQs, contact us',
-      action: onHelpPress,
+      action: () => handleComingSoon('Help & Support', onHelpPress),
       isToggle: false,
     },
   ];
@@ -154,8 +170,8 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, styles.loadingCenter]}>
-        <ActivityIndicator size="large" color="#566551" />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }, styles.loadingCenter]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -163,27 +179,25 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
   const userColor = getMemberColor(user?.uid || profileData?.uid || '');
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <Path
-                d="M10 4L6 8l4 4"
-                stroke="#1E293B"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </TouchableOpacity>
+        <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={[styles.backButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <Path
+                  d="M10 4L6 8l4 4"
+                  stroke={colors.text}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </TouchableOpacity>
+          )}
 
-          <Text style={styles.headerTitle}>My Account</Text>
-{/* 
-          <TouchableOpacity onPress={onEditProfile} style={styles.editBadge}>
-            <Text style={styles.editBadgeText}>Edit</Text>
-          </TouchableOpacity> */}
+          <Text style={[styles.headerTitle, { color: colors.text }, !onBack && { marginLeft: 0 }]}>My Account</Text>
         </View>
 
         {/* Profile Hero */}
@@ -194,18 +208,18 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
                 {getInitials(profileData?.fullName || user?.displayName || '')}
               </Text>
             </View>
-            <View style={styles.statusDot} />
+            <View style={[styles.statusDot, { borderColor: colors.background }]} />
           </View>
 
-          <Text style={styles.userName}>
+          <Text style={[styles.userName, { color: colors.text }]}>
             {profileData?.fullName || user?.displayName || 'User Name'}
           </Text>
-          <Text style={styles.userEmail}>
+          <Text style={[styles.userEmail, { color: colors.textMuted }]}>
             {profileData?.email || user?.email || 'user@example.com'}
           </Text>
 
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>
+          <View style={[styles.roleBadge, { backgroundColor: colors.secondary }]}>
+            <Text style={[styles.roleBadgeText, { color: colors.primary }]}>
               {`${jobTitle} · ${company}`}
             </Text>
           </View>
@@ -213,9 +227,9 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
           {/* Stats */}
           <View style={styles.statsRow}>
             {stats.map((s, index) => (
-              <View key={index} style={styles.statCard}>
-                <Text style={styles.statNumber}>{s.n}</Text>
-                <Text style={styles.statLabel}>{s.l}</Text>
+              <View key={index} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.statNumber, { color: colors.text }]}>{s.n}</Text>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>{s.l}</Text>
               </View>
             ))}
           </View>
@@ -223,7 +237,7 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
 
         {/* Menu List */}
         <View style={styles.menuContainer}>
-          <View style={styles.menuCard}>
+          <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {menuItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
@@ -231,21 +245,21 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
                 activeOpacity={item.action ? 0.7 : 1}
                 style={[
                   styles.menuItem,
-                  index < menuItems.length - 1 && styles.menuItemBorder,
+                  index < menuItems.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
                 ]}
               >
-                <View style={styles.iconWrapper}>{item.icon}</View>
+                <View style={[styles.iconWrapper, { backgroundColor: colors.background }]}>{item.icon}</View>
 
                 <View style={styles.menuTextContainer}>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Text style={styles.menuSub}>{item.sub}</Text>
+                  <Text style={[styles.menuLabel, { color: colors.text }]}>{item.label}</Text>
+                  <Text style={[styles.menuSub, { color: colors.textMuted }]}>{item.sub}</Text>
                 </View>
 
                 {item.isToggle ? (
                   <View
                     style={[
                       styles.toggleTrack,
-                      { backgroundColor: item.toggleValue ? '#566551' : '#E2E8F0' },
+                      { backgroundColor: item.toggleValue ? colors.primary : colors.border },
                     ]}
                   >
                     <View
@@ -259,7 +273,7 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
                   <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                     <Path
                       d="M5 3l4 4-4 4"
-                      stroke="#CBD5E1"
+                      stroke={colors.textMuted}
                       strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -271,23 +285,23 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
           </View>
 
           {/* Logout Button */}
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <View style={[styles.iconWrapper, { backgroundColor: '#FEE2E2' }]}>
+          <TouchableOpacity onPress={handleLogout} style={[styles.logoutButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.iconWrapper, { backgroundColor: colors.dangerLight }]}>
               <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <Path
                   d="M6 3H3a1 1 0 00-1 1v8a1 1 0 001 1h3M10 4.5L14 8m0 0l-4 3.5M14 8H6"
-                  stroke="#DC2626"
+                  stroke={colors.danger}
                   strokeWidth="1.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
               </Svg>
             </View>
-            <Text style={styles.logoutText}>Log Out</Text>
+            <Text style={[styles.logoutText, { color: colors.text }]}>Log Out</Text>
             <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <Path
                 d="M5 3l4 4-4 4"
-                stroke="#CBD5E1"
+                stroke={colors.textMuted}
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -295,9 +309,27 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
             </Svg>
           </TouchableOpacity>
 
-          <Text style={styles.footerText}>Kora v2.1.0 · Made with ♥</Text>
+          <Text style={[styles.footerText, { color: colors.textMuted }]}>Kora v2.1.0 · Made with ♥</Text>
         </View>
       </ScrollView>
+
+      {/* Coming Soon Modal */}
+      {comingSoonVisible && (
+        <BlurView style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Coming Soon!</Text>
+            <Text style={[styles.modalDesc, { color: colors.textMuted }]}>
+              {activeFeature} is currently under development and will be available in the next update.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={() => setComingSoonVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+      )}
     </SafeAreaView>
   );
 }
@@ -305,7 +337,6 @@ const { user, profileData, userProjects, userTasks, loading, logout, getInitials
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
   },
   loadingCenter: {
     justifyContent: 'center',
@@ -321,17 +352,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 12,
-    backgroundColor: '#F8F9FA',
     borderBottomWidth: 1.5,
-    borderBottomColor: '#E2E8F0',
   },
   backButton: {
     width: 32,
     height: 32,
     borderRadius: 12,
-    backgroundColor: '#FFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -339,19 +366,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1E293B',
     marginLeft: 12,
-  },
-  editBadge: {
-    backgroundColor: '#C5D5E4',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  editBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#566551',
   },
   heroSection: {
     alignItems: 'center',
@@ -366,7 +381,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#566551',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -384,20 +398,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#4ADE80',
     borderWidth: 2,
-    borderColor: '#F8F9FA',
   },
   userName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1E293B',
   },
   userEmail: {
     fontSize: 14,
-    color: '#64748B',
     marginBottom: 4,
   },
   roleBadge: {
-    backgroundColor: '#C5D5E4',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 20,
@@ -405,7 +415,6 @@ const styles = StyleSheet.create({
   roleBadgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#566551',
   },
   statsRow: {
     flexDirection: 'row',
@@ -419,18 +428,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderRadius: 16,
-    backgroundColor: '#FFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
   },
   statNumber: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1E293B',
   },
   statLabel: {
     fontSize: 12,
-    color: '#94A3B8',
   },
   menuContainer: {
     paddingHorizontal: 20,
@@ -439,9 +444,7 @@ const styles = StyleSheet.create({
   menuCard: {
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#FFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
   },
   menuItem: {
     flexDirection: 'row',
@@ -449,15 +452,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
   iconWrapper: {
     width: 32,
     height: 32,
     borderRadius: 12,
-    backgroundColor: '#F8F9FA',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -468,11 +466,9 @@ const styles = StyleSheet.create({
   menuLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B',
   },
   menuSub: {
     fontSize: 12,
-    color: '#94A3B8',
   },
   toggleTrack: {
     width: 40,
@@ -504,21 +500,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 16,
-    backgroundColor: '#FFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     marginTop: 4,
   },
   logoutText: {
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B',
   },
   footerText: {
     textAlign: 'center',
     fontSize: 12,
-    color: '#CBD5E1',
     marginTop: 8,
+  },
+  // Coming Soon Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 320,
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalDesc: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modalButton: {
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

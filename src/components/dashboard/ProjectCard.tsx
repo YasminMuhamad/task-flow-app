@@ -26,7 +26,9 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) =>
   const { allProjectTasks, usersMap, getMemberColor, getInitials } = useApp();
 
   const taskStats = useMemo(() => {
-    const projectTasks = allProjectTasks.filter((t) => t.projectId === project.id);
+    const projectTasks = allProjectTasks.filter(
+      (t) => t.projectId === project.id && t.archived !== true
+    );
     const totalCount = projectTasks.length;
     const doneCount = projectTasks.filter((t) => t.status === 'done').length;
 

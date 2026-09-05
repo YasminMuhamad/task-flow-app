@@ -25,6 +25,7 @@ export const LIGHT_COLORS = {
   danger: COLORS.danger,
   dangerLight: COLORS.dangerLight,
   statusDotBorder: COLORS.bg,
+  toggleBg: COLORS.toggleBg
 };
 
 export const DARK_COLORS = {
@@ -40,4 +41,5 @@ export const DARK_COLORS = {
   danger: '#EF4444',
   dangerLight: '#451A1A',
   statusDotBorder: '#0F172A',
+  toggleBg: '#F1F5F9'
 };

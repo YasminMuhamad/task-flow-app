@@ -9,12 +9,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
   ActivityIndicator,
+  StyleSheet as RNStyleSheet,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { getInitials, getMemberColor } from '../context/AppContext';
+import { useTheme } from '../context/ThemeContext';
 import {
   collection,
   addDoc,
@@ -24,7 +24,6 @@ import {
   getDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../api/firebase';
-import { COLORS } from '../constants/theme';
 import { TaskPriority, TaskStatus } from '../types/task';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { sendNotification } from '../services/notificationService';
@@ -50,11 +49,12 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   onClose,
   onTaskCreated,
 }) => {
+  const { colors, isDark } = useTheme();
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [members, setMembers] = useState<MemberUser[]>([]);
   const [assigneeId, setAssigneeId] = useState<string>('');
-  const [dueDateText, setDueDateText] = useState('2025-08-20');
   const [priority, setPriority] = useState<TaskPriority>('Med');
   const [loading, setLoading] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -70,6 +70,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       setDueDate(selectedDate);
     }
   };
+
   useEffect(() => {
     const fetchProjectMembers = async () => {
       if (!projectId || !visible) return;
@@ -100,7 +101,6 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
           setMembers(fetchedMembers);
 
-          // setting the first member as default assignee if available
           if (fetchedMembers.length > 0) {
             setAssigneeId(fetchedMembers[0].id);
           }
@@ -115,7 +115,6 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     fetchProjectMembers();
   }, [projectId, visible]);
 
-  // reset form fields when modal is closed
   const handleClose = () => {
     setTitle('');
     setDescription('');
@@ -129,8 +128,6 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     onClose();
   };
 
-  // save task to Firestore
-  // save task to Firestore
   const handleSaveTask = async () => {
     if (!title.trim()) {
       setError('Please enter a task title');
@@ -202,233 +199,231 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       animationType="slide"
       onRequestClose={handleClose}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-       <BlurView intensity={25} tint="dark" style={styles.overlay}>
-          {/* Backdrop Touch Area */}
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={handleClose}
-          />
+      <BlurView intensity={25} tint={isDark ? 'dark' : 'light'} style={styles.overlay}>
+        <TouchableOpacity style={RNStyleSheet.absoluteFill} activeOpacity={1} onPress={handleClose} />
+        
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardView}
+        >
+          {/* Sheet Container */}
+          <View style={[styles.sheetContainer, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: isDark ? 1 : 0 }]}>
+            {/* Drag Handle */}
+            <View style={styles.dragHandleContainer}>
+              <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
+            </View>
 
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.keyboardView}
-          >
-            {/* Sheet Container */}
-            <View style={styles.sheetContainer}>
-              {/* Drag Handle */}
-              <View style={styles.dragHandleContainer}>
-                <View style={styles.dragHandle} />
-              </View>
-
-              {/* Header */}
-              <View style={styles.header}>
-                <Text style={styles.headerTitle}>Create Task</Text>
-                <TouchableOpacity
-                  onPress={handleClose}
-                  style={styles.closeButton}
-                  activeOpacity={0.7}
-                >
-                  <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <Path
-                      d="M3 3l8 8M11 3l-8 8"
-                      stroke={COLORS.muted}
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    />
-                  </Svg>
-                </TouchableOpacity>
-              </View>
-
-              {/* Error Message */}
-              {error && <Text style={styles.errorText}>{error}</Text>}
-
-              {/* Form Content */}
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.formContainer}
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>Create Task</Text>
+              <TouchableOpacity
+                onPress={handleClose}
+                style={styles.closeButton}
+                activeOpacity={0.7}
               >
-                {/* Task Title */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Task Title *</Text>
-                  <TextInput
-                    placeholder="e.g. Finalize icon set for v2.0"
-                    placeholderTextColor="#94A3B8"
-                    value={title}
-                    onChangeText={setTitle}
-                    style={styles.input}
+                <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <Path
+                    d="M3 3l8 8M11 3l-8 8"
+                    stroke={colors.textMuted}
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
                   />
-                </View>
+                </Svg>
+              </TouchableOpacity>
+            </View>
 
-                {/* Description */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Description</Text>
-                  <TextInput
-                    placeholder="Add context, links, or notes for the team..."
-                    placeholderTextColor="#94A3B8"
-                    multiline
-                    numberOfLines={3}
-                    value={description}
-                    onChangeText={setDescription}
-                    style={[styles.input, styles.textArea]}
-                  />
-                </View>
+            {/* Error Message */}
+            {error && <Text style={styles.errorText}>{error}</Text>}
 
-                {/* Assign To */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Assign To</Text>
-                  {loadingMembers ? (
-                    <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginVertical: 8 }} />
-                  ) : members.length === 0 ? (
-                    <Text style={styles.emptyMembersText}>No members found in this project</Text>
-                  ) : (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View style={styles.membersRow}>
-                        {members.map((m) => {
-                          const isSelected = assigneeId === m.id;
-                          return (
-                            <TouchableOpacity
-                              key={m.id}
-                              style={styles.memberItem}
-                              activeOpacity={0.7}
-                              onPress={() => setAssigneeId(m.id)}
+            {/* Form Content */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.formContainer}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Task Title */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Task Title *</Text>
+                <TextInput
+                  placeholder="e.g. Finalize icon set for v2.0"
+                  placeholderTextColor={colors.textMuted}
+                  value={title}
+                  onChangeText={setTitle}
+                  style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                />
+              </View>
+
+              {/* Description */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Description</Text>
+                <TextInput
+                  placeholder="Add context, links, or notes for the team..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  value={description}
+                  onChangeText={setDescription}
+                  style={[styles.input, styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+                />
+              </View>
+
+              {/* Assign To */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Assign To</Text>
+                {loadingMembers ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={{ alignSelf: 'flex-start', marginVertical: 8 }} />
+                ) : members.length === 0 ? (
+                  <Text style={[styles.emptyMembersText, { color: colors.textMuted }]}>No members found in this project</Text>
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={styles.membersRow}>
+                      {members.map((m) => {
+                        const isSelected = assigneeId === m.id;
+                        return (
+                          <TouchableOpacity
+                            key={m.id}
+                            style={styles.memberItem}
+                            activeOpacity={0.7}
+                            onPress={() => setAssigneeId(m.id)}
+                          >
+                            <View
+                              style={[
+                                styles.avatar,
+                                { backgroundColor: m.color },
+                                isSelected && [styles.avatarSelected, { borderColor: colors.primary }],
+                              ]}
                             >
-                              <View
-                                style={[
-                                  styles.avatar,
-                                  { backgroundColor: m.color },
-                                  isSelected && styles.avatarSelected,
-                                ]}
-                              >
-                                <Text style={styles.avatarText}>{m.initials}</Text>
-                              </View>
-                              <Text
-                                style={[
-                                  styles.memberName,
-                                  isSelected && styles.memberNameSelected,
-                                ]}
-                              >
-                                {m.name}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    </ScrollView>
-                  )}
-                </View>
-
-                {/* Due Date */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Due Date</Text>
-                  
-                  <TouchableOpacity
-                    style={styles.dateSelector}
-                    activeOpacity={0.7}
-                    onPress={() => setShowDatePicker(true)}
-                  >
-                    <Text style={styles.dateText}>
-                      {dueDate.toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
+                              <Text style={styles.avatarText}>{m.initials}</Text>
+                            </View>
+                            <Text
+                              style={[
+                                styles.memberName,
+                                { color: colors.textMuted },
+                                isSelected && [styles.memberNameSelected, { color: colors.primary }],
+                              ]}
+                            >
+                              {m.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
                       })}
+                    </View>
+                  </ScrollView>
+                )}
+              </View>
+
+              {/* Due Date */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Due Date</Text>
+                
+                <TouchableOpacity
+                  style={[styles.dateSelector, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  activeOpacity={0.7}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={[styles.dateText, { color: colors.text }]}>
+                    {dueDate.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={dueDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    minimumDate={new Date()} 
+                    onChange={handleDateChange}
+                  />
+                )}
+              </View>
+
+              {/* Priority */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Priority</Text>
+                <View style={styles.priorityRow}>
+                  {/* Low */}
+                  <TouchableOpacity
+                    style={[
+                      styles.priorityBtn,
+                      { backgroundColor: colors.background, borderColor: colors.border },
+                      priority === 'Low' && styles.priorityLowActive,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => setPriority('Low')}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityText,
+                        { color: priority === 'Low' ? '#FFFFFF' : '#16A34A' },
+                      ]}
+                    >
+                      Low
                     </Text>
                   </TouchableOpacity>
 
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={dueDate}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      minimumDate={new Date()} 
-                      onChange={handleDateChange}
-                    />
-                  )}
+                  {/* Medium */}
+                  <TouchableOpacity
+                    style={[
+                      styles.priorityBtn,
+                      { backgroundColor: colors.background, borderColor: colors.border },
+                      priority === 'Med' && styles.priorityMediumActive,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => setPriority('Med')}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityText,
+                        { color: priority === 'Med' ? '#FFFFFF' : '#D97706' },
+                      ]}
+                    >
+                      Medium
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* High */}
+                  <TouchableOpacity
+                    style={[
+                      styles.priorityBtn,
+                      { backgroundColor: colors.background, borderColor: colors.border },
+                      priority === 'High' && styles.priorityHighActive,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => setPriority('High')}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityText,
+                        { color: priority === 'High' ? '#FFFFFF' : '#DC2626' },
+                      ]}
+                    >
+                      High
+                    </Text>
+                  </TouchableOpacity>
                 </View>
+              </View>
 
-                {/* Priority */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Priority</Text>
-                  <View style={styles.priorityRow}>
-                    {/* Low */}
-                    <TouchableOpacity
-                      style={[
-                        styles.priorityBtn,
-                        priority === 'Low' && styles.priorityLowActive,
-                      ]}
-                      activeOpacity={0.7}
-                      onPress={() => setPriority('Low')}
-                    >
-                      <Text
-                        style={[
-                          styles.priorityText,
-                          { color: priority === 'Low' ? '#FFFFFF' : '#16A34A' },
-                        ]}
-                      >
-                        Low
-                      </Text>
-                    </TouchableOpacity>
-
-                    {/* Medium */}
-                    <TouchableOpacity
-                      style={[
-                        styles.priorityBtn,
-                        priority === 'Med' && styles.priorityMediumActive,
-                      ]}
-                      activeOpacity={0.7}
-                      onPress={() => setPriority('Med')}
-                    >
-                      <Text
-                        style={[
-                          styles.priorityText,
-                          { color: priority === 'Med' ? '#FFFFFF' : '#D97706' },
-                        ]}
-                      >
-                        Medium
-                      </Text>
-                    </TouchableOpacity>
-
-                    {/* High */}
-                    <TouchableOpacity
-                      style={[
-                        styles.priorityBtn,
-                        priority === 'High' && styles.priorityHighActive,
-                      ]}
-                      activeOpacity={0.7}
-                      onPress={() => setPriority('High')}
-                    >
-                      <Text
-                        style={[
-                          styles.priorityText,
-                          { color: priority === 'High' ? '#FFFFFF' : '#DC2626' },
-                        ]}
-                      >
-                        High
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Save Button */}
-                <TouchableOpacity
-                  style={[styles.saveButton, loading && styles.disabledBtn]}
-                  activeOpacity={0.8}
-                  onPress={handleSaveTask}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator color={COLORS.white} />
-                  ) : (
-                    <Text style={styles.saveButtonText}>Save Task</Text>
-                  )}
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </BlurView>
-      </TouchableWithoutFeedback>
+              {/* Save Button */}
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: colors.primary }, loading && styles.disabledBtn]}
+                activeOpacity={0.8}
+                onPress={handleSaveTask}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save Task</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </BlurView>
     </Modal>
   );
 };
@@ -436,7 +431,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(30, 41, 59, 0.45)',
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
     justifyContent: 'flex-end',
   },
   keyboardView: {
@@ -444,21 +439,24 @@ const styles = StyleSheet.create({
     maxHeight: '88%',
   },
   sheetContainer: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
   },
   dragHandleContainer: {
     alignItems: 'center',
     paddingVertical: 10,
   },
   dragHandle: {
-    width: 36,
+    width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E2E8F0',
   },
   header: {
     flexDirection: 'row',
@@ -469,7 +467,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.text,
   },
   closeButton: {
     padding: 6,
@@ -478,7 +475,7 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     fontSize: 13,
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   formContainer: {
     paddingBottom: 20,
@@ -489,18 +486,14 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: COLORS.text,
     marginBottom: 6,
   },
   input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 1.5,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,
-    color: COLORS.text,
   },
   textArea: {
     height: 80,
@@ -523,40 +516,33 @@ const styles = StyleSheet.create({
   },
   avatarSelected: {
     borderWidth: 2,
-    borderColor: COLORS.primary,
   },
   avatarText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 12,
   },
   memberName: {
     fontSize: 11,
-    color: COLORS.muted,
   },
   memberNameSelected: {
-    color: COLORS.primary,
     fontWeight: 'bold',
   },
   emptyMembersText: {
     fontSize: 12,
-    color: COLORS.muted,
     fontStyle: 'italic',
   },
   dateSelector: {
-  backgroundColor: '#F8F9FA', // أو استخدم COLORS.bg
-  borderWidth: 1,
-  borderColor: '#E2E8F0',     // أو استخدم COLORS.border
-  borderRadius: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 14,
-  justifyContent: 'center',
-},
-dateText: {
-  fontSize: 14,
-  color: '#1E293B',           // أو استخدم COLORS.text
-  fontWeight: '500',
-},
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    justifyContent: 'center',
+  },
+  dateText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
   priorityRow: {
     flexDirection: 'row',
     gap: 10,
@@ -567,9 +553,7 @@ dateText: {
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 1.5,
   },
   priorityLowActive: {
     backgroundColor: '#16A34A',
@@ -588,7 +572,6 @@ dateText: {
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: COLORS.primary,
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
@@ -598,7 +581,7 @@ dateText: {
     opacity: 0.7,
   },
   saveButtonText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: 'bold',
   },

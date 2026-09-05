@@ -8,6 +8,7 @@ export interface ChecklistItem {
   id: string;
   label: string;
   done: boolean;
+  createdAt?: Timestamp | Date;
 }
 // Subcollection: tasks/{taskId}/comments
 export interface TaskAttachment {

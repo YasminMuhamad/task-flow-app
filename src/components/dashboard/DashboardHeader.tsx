@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
+
 import { useApp } from '../../context/AppContext';
-import { COLORS } from '../../constants/theme';
-import { getInitials, getMemberColor } from '../../context/AppContext';
+import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
   onProfileSelect: () => void;
@@ -18,8 +18,8 @@ export const DashboardHeader: React.FC<Props> = ({
   onSearch,
   hasUnreadNotifications,
 }) => {
-
   const { user, profileData, userProjects, userTasks, notifications = [], loading, getMemberColor, getInitials } = useApp();
+  const { colors } = useTheme();
 
   const hasUnread = useMemo(() => {
     if (typeof hasUnreadNotifications === 'boolean') {
@@ -29,7 +29,6 @@ export const DashboardHeader: React.FC<Props> = ({
   }, [notifications, hasUnreadNotifications]);
 
   const userName = profileData?.fullName || 'User';
-  const userInitials = useMemo(() => getInitials(profileData?.fullName), [profileData?.fullName]);
 
   const statsList = useMemo(() => {
     const projectsCount = userProjects.length;
@@ -50,8 +49,8 @@ export const DashboardHeader: React.FC<Props> = ({
       {/* User Info Header */}
       <View style={styles.headerTop}>
         <View>
-          <Text style={styles.greetingText}>Good morning 👋</Text>
-          <Text style={styles.welcomeText}>
+          <Text style={[styles.greetingText, { color: colors.textMuted }]}>Good morning 👋</Text>
+          <Text style={[styles.welcomeText, { color: colors.text }]}>
             {loading ? 'Welcome back...' : `Welcome back, ${userName}`}
           </Text>
         </View>
@@ -60,21 +59,26 @@ export const DashboardHeader: React.FC<Props> = ({
         <View style={styles.actionGroup}>
           {/* Notification Button */}
           <TouchableOpacity
-            style={styles.notifButton}
+            style={[
+              styles.notifButton,
+              { backgroundColor: colors.card, borderColor: colors.border }
+            ]}
             onPress={onNotifications}
             activeOpacity={0.7}
           >
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <Path
                 d="M8 1.5a4 4 0 014 4v2.5l1 2H3l1-2V5.5a4 4 0 014-4zM6.5 12a1.5 1.5 0 003 0"
-                stroke="#566551"
+                stroke={colors.primary}
                 strokeWidth="1.3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </Svg>
 
-            {hasUnread && <View style={styles.notifBadgeDot} />}
+            {hasUnread && (
+              <View style={[styles.notifBadgeDot, { backgroundColor: colors.primary, borderColor: colors.card }]} />
+            )}
           </TouchableOpacity>
 
           {/* User Profile Avatar */}
@@ -82,43 +86,54 @@ export const DashboardHeader: React.FC<Props> = ({
             <TouchableOpacity
               style={[
                 styles.avatar,
-                { backgroundColor: getMemberColor(user?.uid || profileData?.uid || '') }
+                { backgroundColor: userColor }
               ]}
               onPress={onProfileSelect}
               activeOpacity={0.7}
             >
               {loading ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text style={styles.avatarText}>
                   {getInitials(profileData?.fullName || user?.displayName || '')}
                 </Text>
               )}
             </TouchableOpacity>
-            <View style={styles.onlineBadge} />
+            <View style={[styles.onlineBadge, { borderColor: colors.background }]} />
           </View>
         </View>
       </View>
 
       {/* Search Bar Trigger */}
       <TouchableOpacity
-        style={styles.searchButton}
+        style={[
+          styles.searchButton,
+          { backgroundColor: colors.card, borderColor: colors.border }
+        ]}
         onPress={onSearch}
         activeOpacity={0.8}
       >
         <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <Circle cx="6" cy="6" r="4.5" stroke="#94A3B8" strokeWidth="1.3" />
-          <Path d="M10 10l3 3" stroke="#94A3B8" strokeWidth="1.3" strokeLinecap="round" />
+          <Circle cx="6" cy="6" r="4.5" stroke={colors.textMuted} strokeWidth="1.3" />
+          <Path d="M10 10l3 3" stroke={colors.textMuted} strokeWidth="1.3" strokeLinecap="round" />
         </Svg>
-        <Text style={styles.searchText}>Search tasks, projects, files...</Text>
+        <Text style={[styles.searchText, { color: colors.textMuted }]}>
+          Search tasks, projects, files...
+        </Text>
       </TouchableOpacity>
 
       {/* Stats Row */}
       <View style={styles.statsRow}>
         {statsList.map((s) => (
-          <View key={s.label} style={styles.statCard}>
-            <Text style={styles.statVal}>{s.val}</Text>
-            <Text style={styles.statLabel}>{s.label}</Text>
+          <View
+            key={s.label}
+            style={[
+              styles.statCard,
+              { backgroundColor: colors.secondary }
+            ]}
+          >
+            <Text style={[styles.statVal, { color: colors.text }]}>{s.val}</Text>
+            <Text style={[styles.statLabel, { color: colors.primary }]}>{s.label}</Text>
           </View>
         ))}
       </View>
@@ -141,12 +156,10 @@ const styles = StyleSheet.create({
   greetingText: {
     fontSize: 12,
     fontWeight: '500',
-    color: COLORS.muted,
   },
   welcomeText: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: COLORS.text,
   },
   actionGroup: {
     flexDirection: 'row',
@@ -157,9 +170,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -171,9 +182,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.primary,
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
   },
   avatarContainer: {
     position: 'relative',
@@ -182,12 +191,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 14,
   },
@@ -200,7 +208,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#4ADE80',
     borderWidth: 2,
-    borderColor: COLORS.bg,
   },
   searchButton: {
     flexDirection: 'row',
@@ -212,13 +219,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
   },
   searchText: {
     fontSize: 14,
-    color: '#94A3B8',
     flex: 1,
   },
   statsRow: {
@@ -231,16 +235,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: COLORS.secondary,
   },
   statVal: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.text,
   },
   statLabel: {
     fontSize: 12,
-    color: COLORS.primary,
     fontWeight: '500',
   },
 });

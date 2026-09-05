@@ -10,6 +10,7 @@ import {
   updateDoc,
   setDoc,
   writeBatch,
+  getDocs
 } from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
 import { UserProfile } from '../types/user';
@@ -182,23 +183,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user, userProjects]);
 
-  // 4. Attachments relative to all project tasks
-  useEffect(() => {
-    if (!user || allProjectTasks.length === 0) {
-      setAllAttachments([]);
+// 4. Attachments relative to all project tasks (Subcollection fetch)
+useEffect(() => {
+  let isMounted = true;
+
+  const fetchUserProjectsAttachments = async () => {
+    if (!user || userProjects.length === 0) {
+      if (isMounted) setAllAttachments([]);
       return;
     }
 
-    const attachments = allProjectTasks.flatMap((task) => {
-      if (!task.attachments) return [];
-      return task.attachments.map((att) => ({
-        ...att,
-        taskId: task.id,
-      }));
-    });
+    try {
+      const userProjectIds = userProjects.map((p) => p.id);
+      const validTasks = allProjectTasks.filter((task) => 
+        userProjectIds.includes(task.projectId)
+      );
 
-    setAllAttachments(attachments);
-  }, [user, allProjectTasks]);
+      if (validTasks.length === 0) {
+        if (isMounted) setAllAttachments([]);
+        return;
+      }
+
+      const attachmentPromises = validTasks.map(async (task) => {
+        try {
+          const attachmentsRef = collection(db, 'tasks', task.id, 'attachments');
+          const snapshot = await getDocs(attachmentsRef);
+          
+          if (snapshot.empty) return [];
+
+          return snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              taskId: task.id,
+              name: data.name || data.fileName || 'Untitled',
+              type: data.type || data.fileType || '',
+              size: data.size || '0 MB',
+              url: data.url || data.downloadUrl || '',
+              uploadedBy: data.uploadedBy || '',
+              createdAt: data.createdAt || new Date(),
+            };
+          });
+        } catch (err) {
+          return [];
+        }
+      });
+
+      const results = await Promise.all(attachmentPromises);
+      const flattenedAttachments = results.flat();
+
+      if (isMounted) {
+        setAllAttachments(flattenedAttachments);
+      }
+    } catch (e) {
+      console.error("Error fetching filtered attachments:", e);
+      if (isMounted) setAllAttachments([]);
+    }
+  };
+
+  fetchUserProjectsAttachments();
+
+  return () => {
+    isMounted = false;
+  };
+}, [user, userProjects, allProjectTasks]);
 
   // 5. User profiles cache for all project members
   useEffect(() => {
