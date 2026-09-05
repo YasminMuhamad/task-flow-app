@@ -12,12 +12,14 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ScrollView,
+  StyleSheet as RNStyleSheet,
 } from 'react-native';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, arrayUnion } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../api/firebase';
 import { useApp } from '../../context/AppContext';
-import { COLORS } from '../../constants/theme';
+import { useTheme } from '../../context/ThemeContext';
 import { sendNotification } from '../../services/notificationService';
+import { BlurView } from 'expo-blur';
 
 interface UserMember {
   uid: string;
@@ -47,6 +49,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onProjectCreated,
 }) => {
   const { user, getInitials, profileData } = useApp();
+  const { colors, isDark } = useTheme();
+
+  const PROJECT_TAGS = ['Design', 'Engineering', 'Marketing', 'General'];
 
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -186,23 +191,30 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.overlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardView}
-          >
-            <View style={styles.container}>
+      <BlurView intensity={25} tint={isDark ? 'dark' : 'light'} style={styles.overlay}>
+        <TouchableWithoutFeedback onPress={handleClose}>
+          <View style={RNStyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardView}
+        >
+          <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: isDark ? 1 : 0 }]}>
+              {/* Drag Handle */}
+              <View style={[styles.dragHandle, { backgroundColor: colors.border }]} />
+
               <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>Create New Project</Text>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Create New Project</Text>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
 
                 {/* Title Input */}
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
                   placeholder="Project Title *"
-                  placeholderTextColor={COLORS.muted}
+                  placeholderTextColor={colors.textMuted}
                   value={title}
                   onChangeText={(text) => {
                     setTitle(text);
@@ -212,9 +224,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                 {/* Description Input */}
                 <TextInput
-                  style={[styles.input, styles.textArea]}
+                  style={[styles.input, styles.textArea, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
                   placeholder="Description (Optional)"
-                  placeholderTextColor={COLORS.muted}
+                  placeholderTextColor={colors.textMuted}
                   multiline
                   numberOfLines={3}
                   value={desc}
@@ -226,13 +238,17 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                 {/* Tag Selection */}
                 <View style={styles.tagRow}>
-                  {['Design', 'Engineering', 'Marketing'].map((t) => (
+                  {PROJECT_TAGS.map((t) => (
                     <TouchableOpacity
                       key={t}
-                      style={[styles.tagChip, tag === t && styles.activeTagChip]}
+                      style={[
+                        styles.tagChip,
+                        { borderColor: colors.border, backgroundColor: colors.background },
+                        tag === t && [styles.activeTagChip, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                      ]}
                       onPress={() => setTag(t)}
                     >
-                      <Text style={[styles.tagText, tag === t && styles.activeTagText]}>
+                      <Text style={[styles.tagText, { color: colors.textMuted }, tag === t && styles.activeTagText]}>
                         {t}
                       </Text>
                     </TouchableOpacity>
@@ -241,16 +257,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                 {/* Add Team Members Header */}
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Add Team Members</Text>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Team Members</Text>
                   <TouchableOpacity
-                    style={styles.addCircleBtn}
+                    style={[styles.addCircleBtn, { borderColor: colors.primary, backgroundColor: colors.card }]}
                     onPress={() => {
                       setShowEmailInput(!showEmailInput);
                       setMemberError(null);
                       setSuggestedUser(null);
                     }}
                   >
-                    <Text style={styles.addCircleText}>{showEmailInput ? '✕' : '+'}</Text>
+                    <Text style={[styles.addCircleText, { color: colors.primary }]}>{showEmailInput ? '✕' : '+'}</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -258,9 +274,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   <View style={styles.emailContainer}>
                     <View style={styles.emailSearchRow}>
                       <TextInput
-                        style={[styles.input, styles.emailInput]}
+                        style={[styles.input, styles.emailInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
                         placeholder="Type user email..."
-                        placeholderTextColor={COLORS.muted}
+                        placeholderTextColor={colors.textMuted}
                         keyboardType="email-address"
                         autoCapitalize="none"
                         value={searchEmail}
@@ -268,7 +284,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       />
                       {searchingUser && (
                         <ActivityIndicator
-                          color={COLORS.primary}
+                          color={colors.primary}
                           size="small"
                           style={styles.searchLoader}
                         />
@@ -277,7 +293,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                     {suggestedUser && (
                       <TouchableOpacity
-                        style={styles.suggestionCard}
+                        style={[styles.suggestionCard, { backgroundColor: colors.background, borderColor: colors.border }]}
                         onPress={() => handleSelectSuggestedUser(suggestedUser)}
                       >
                         <View
@@ -286,12 +302,11 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                             { backgroundColor: getMemberColor(suggestedUser.uid) },
                           ]}
                         >
-                          {/* 👈 استخدام getInitials الجاهزة */}
                           <Text style={styles.avatarText}>{getInitials(suggestedUser.fullName)}</Text>
                         </View>
                         <View style={styles.suggestionInfo}>
-                          <Text style={styles.suggestionName}>{suggestedUser.fullName}</Text>
-                          <Text style={styles.suggestionEmail}>{suggestedUser.email}</Text>
+                          <Text style={[styles.suggestionName, { color: colors.text }]}>{suggestedUser.fullName}</Text>
+                          <Text style={[styles.suggestionEmail, { color: colors.textMuted }]}>{suggestedUser.email}</Text>
                         </View>
                       </TouchableOpacity>
                     )}
@@ -305,12 +320,11 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   <View style={styles.membersRow}>
                     {selectedMembers.map((member) => {
                       const avatarBg = getMemberColor(member.uid);
-                      // 👈 استخدام getInitials الجاهزة
                       const initials = getInitials(member.fullName);
 
                       return (
                         <View key={member.uid} style={styles.avatarWrapper}>
-                          <View style={[styles.avatarCircle, { backgroundColor: avatarBg }]}>
+                          <View style={[styles.avatarCircle, { backgroundColor: avatarBg, borderColor: colors.card }]}>
                             <Text style={styles.avatarText}>{initials}</Text>
                           </View>
                           <TouchableOpacity
@@ -327,17 +341,17 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
                 {/* Action Buttons */}
                 <View style={styles.actions}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={handleClose}>
-                    <Text style={styles.cancelText}>Cancel</Text>
+                  <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: colors.toggleBg }]} onPress={handleClose}>
+                    <Text style={[styles.cancelText, { color: colors.textMuted }]}>Cancel</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.submitBtn, loading && styles.disabledBtn]}
+                    style={[styles.submitBtn, { backgroundColor: colors.primary }, loading && styles.disabledBtn]}
                     onPress={handleCreate}
                     disabled={loading}
                   >
                     {loading ? (
-                      <ActivityIndicator color={COLORS.white} size="small" />
+                      <ActivityIndicator color="#FFFFFF" size="small" />
                     ) : (
                       <Text style={styles.submitText}>Create</Text>
                     )}
@@ -345,9 +359,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </View>
               </ScrollView>
             </View>
-          </KeyboardAvoidingView>
-        </View>
-      </TouchableWithoutFeedback>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </BlurView>
     </Modal>
   );
 };
@@ -355,24 +369,35 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(30, 41, 59, 0.45)', 
+    justifyContent: 'flex-end',
   },
   keyboardView: {
     width: '100%',
   },
   container: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 20,
-    padding: 24,
-    elevation: 5,
-    maxHeight: '100%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    // maxHeight: '88%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.text,
     marginBottom: 12,
   },
   errorText: {
@@ -382,12 +407,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   input: {
-    backgroundColor: COLORS.secondary,
+    borderWidth: 1.5,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 14,
-    color: COLORS.text,
     marginBottom: 12,
   },
   textArea: {
@@ -403,19 +427,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
   },
   activeTagChip: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    // Overwritten dynamically
   },
   tagText: {
     fontSize: 12,
-    color: COLORS.muted,
   },
   activeTagText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   sectionHeader: {
@@ -427,20 +448,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.text,
   },
   addCircleBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    borderColor: COLORS.primary,
     borderWidth: 2,
-    backgroundColor: COLORS.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addCircleText: {
-    color: COLORS.primary,
     fontSize: 14,
     fontWeight: 'bold',
     lineHeight: 18,
@@ -463,17 +480,10 @@ const styles = StyleSheet.create({
   suggestionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.white,
     borderRadius: 12,
     padding: 10,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   suggestionAvatar: {
     width: 32,
@@ -489,11 +499,9 @@ const styles = StyleSheet.create({
   suggestionName: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: COLORS.text,
   },
   suggestionEmail: {
     fontSize: 11,
-    color: COLORS.muted,
   },
   memberErrorText: {
     color: '#E53E3E',
@@ -520,10 +528,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: COLORS.bg,
   },
   avatarText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -537,11 +544,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.bg,
   },
   removeBadgeText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontSize: 9,
     fontWeight: 'bold',
     lineHeight: 10,
@@ -553,24 +558,29 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cancelBtn: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
   },
   cancelText: {
-    color: COLORS.muted,
     fontWeight: '600',
   },
   submitBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
   },
   disabledBtn: {
     opacity: 0.7,
   },
   submitText: {
-    color: COLORS.white,
+    color: '#FFFFFF',
     fontWeight: 'bold',
   },
 });

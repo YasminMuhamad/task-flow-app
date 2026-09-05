@@ -6,7 +6,8 @@ export interface Project {
   desc?: string;
   progress: number;
   memberIds: string[];
-  tag: string;
+  starredBy?: string[];
+  tag?: string;
   createdAt?: Timestamp | Date;
   createdBy?: string;
 }

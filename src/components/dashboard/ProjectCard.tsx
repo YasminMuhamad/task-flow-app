@@ -1,50 +1,15 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Timestamp } from 'firebase/firestore';
 import { useApp } from '../../context/AppContext';
 import { COLORS } from '../../constants/theme';
 import { Project } from '../../types/project';
+import { formatTimeAgo } from '../../utils/date';
 
 interface ProjectCardProps {
   project: Project;
   onPress: () => void;
 }
-
-const formatTimeAgo = (dateValue?: Timestamp | Date): string => {
-  if (!dateValue) return 'Active';
-
-  const date = dateValue instanceof Timestamp ? dateValue.toDate() : new Date(dateValue);
-  const now = new Date();
-  const secondsAgo = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (secondsAgo < 60) return 'Just now';
-
-  const minutesAgo = Math.floor(secondsAgo / 60);
-  if (minutesAgo < 60) return `${minutesAgo}m ago`;
-
-  const hoursAgo = Math.floor(minutesAgo / 60);
-  if (hoursAgo < 24) return `${hoursAgo}h ago`;
-
-  const daysAgo = Math.floor(hoursAgo / 24);
-  if (daysAgo < 30) return `${daysAgo}d ago`;
-
-  const monthsAgo = Math.floor(daysAgo / 30);
-  if (monthsAgo < 12) return `${monthsAgo}mo ago`;
-
-  const yearsAgo = Math.floor(daysAgo / 365);
-  return `${yearsAgo}y ago`;
-};
-
-const getMemberColor = (str: string) => {
-  const colors = ['#566551', '#C5D5E4', '#8DA68A', '#A8BECE', '#3F4B3C'];
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % colors.length;
-  return colors[index];
-};
 
 const getTagColor = (tag: string) => {
   switch (tag?.toLowerCase()) {
@@ -58,11 +23,12 @@ const getTagColor = (tag: string) => {
 };
 
 export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) => {
-  const { allProjectTasks, usersMap } = useApp();
+  const { allProjectTasks, usersMap, getMemberColor, getInitials } = useApp();
 
-  // 1. حساب إحصائيات المهام لحظياً وبدون أي طلبات شبكية
   const taskStats = useMemo(() => {
-    const projectTasks = allProjectTasks.filter((t) => t.projectId === project.id);
+    const projectTasks = allProjectTasks.filter(
+      (t) => t.projectId === project.id && t.archived !== true
+    );
     const totalCount = projectTasks.length;
     const doneCount = projectTasks.filter((t) => t.status === 'done').length;
 
@@ -72,24 +38,16 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) =>
     return { doneCount, totalCount, progress };
   }, [allProjectTasks, project.id, project.progress]);
 
-  // 2. استخراج الحروف الأولى للأعضاء من قاموس الأعضاء المخبأ بـ AppContext
   const membersInitials = useMemo(() => {
     if (!project.memberIds || project.memberIds.length === 0) return [];
 
     return project.memberIds.slice(0, 4).map((uid) => {
       const userData = usersMap[uid];
-      if (userData?.fullName) {
-        const parts = userData.fullName.trim().split(' ');
-        if (parts.length >= 2) {
-          return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-        }
-        return userData.fullName.substring(0, 2).toUpperCase();
-      }
-      return 'U';
+      return getInitials(userData?.fullName);
     });
-  }, [project.memberIds, usersMap]);
+  }, [project.memberIds, usersMap, getInitials]);
 
-  const tagColor = getTagColor(project.tag);
+  const tagColor = getTagColor(project.tag || '');
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.card}>
@@ -139,7 +97,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onPress }) =>
               style={[
                 styles.memberAvatar,
                 {
-                  backgroundColor: getMemberColor(initials + i),
+                  backgroundColor: getMemberColor(project.memberIds[i]),
                   marginLeft: i > 0 ? -8 : 0,
                 },
               ]}

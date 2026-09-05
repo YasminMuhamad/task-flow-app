@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { memo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,46 +7,26 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
-  Modal,
-  TouchableWithoutFeedback,
-  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  doc,
-  updateDoc,
-  deleteDoc,
-  getDocs,
-  arrayUnion,
-  arrayRemove,
-} from 'firebase/firestore';
-import { db } from '../api/firebase';
-import { COLORS } from '../constants/theme';
+
+import { useTheme } from '../context/ThemeContext';
 import { Project } from '../types/project';
 import { Task, TaskStatus } from '../types/task';
 import { CreateTaskModal } from '../components/CreateTaskModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
-import { useApp } from '../context/AppContext';
-import { sendNotification } from '../services/notificationService';
+import EmptyStateScreen from '../components/EmptyStateScreen';
+
+import { useProjectDetails, FilterTab } from '../hooks/useProjectDetails';
+import { ProjectMenuModal } from '../components/project/ProjectMenuModal';
+import { ProjectSettingsModal } from '../components/project/ProjectSettingsModal';
 
 interface Props {
   project: Project;
   onBack: () => void;
   onTaskSelect: (taskId: string) => void;
   onOpenArchived: () => void;
-}
-
-type FilterTab = 'all' | 'todo' | 'inprogress' | 'done';
-
-interface SearchedUser {
-  id: string;
-  name: string;
-  email: string;
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -61,11 +41,17 @@ const STATUS_LABELS: Record<string, string> = {
   done: 'Done',
 };
 
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'todo', label: 'To Do' },
+  { key: 'inprogress', label: 'In Progress' },
+  { key: 'done', label: 'Done' },
+];
+
 const formatDueDate = (dateVal: any) => {
   if (!dateVal) return '';
   if (typeof dateVal.toDate === 'function') {
-    const d = dateVal.toDate();
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return dateVal.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   if (dateVal instanceof Date) {
     return dateVal.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -73,349 +59,198 @@ const formatDueDate = (dateVal: any) => {
   return String(dateVal);
 };
 
-export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect, onOpenArchived }: Props) {
-  const insets = useSafeAreaInsets();
-  const { user, usersMap, getInitials, getMemberColor } = useApp();
+// --- Task Item Component ---
+interface TaskItemProps {
+  item: Task;
+  usersMap: Record<string, any>;
+  getInitials: (name: string) => string;
+  onTaskSelect: (taskId: string) => void;
+  onToggleStatus: (taskId: string, currentStatus: TaskStatus) => void;
+}
 
-  const [currentProject, setCurrentProject] = useState<Project>(initialProject);
-  const [filter, setFilter] = useState<FilterTab>('all');
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loadingTasks, setLoadingTasks] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
+const TaskItem = memo(({ item, usersMap, getInitials, onTaskSelect, onToggleStatus }: TaskItemProps) => {
+  const { colors, isDark } = useTheme();
+  const status = item.status || 'todo';
+  const priority = item.priority || 'Low';
+  const pColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.Low;
 
-  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editTitle, setEditTitle] = useState(initialProject.title || '');
-  const [editTag, setEditTag] = useState(initialProject.tag || '');
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const [membersModalVisible, setMembersModalVisible] = useState(false);
-  const [searchEmail, setSearchEmail] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [foundUser, setFoundUser] = useState<SearchedUser | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const [memberActionLoading, setMemberActionLoading] = useState(false);
-  const [memberToDelete, setMemberToDelete] = useState<{ id: string; name: string } | null>(null);
-
-  useEffect(() => {
-    const projectRef = doc(db, 'projects', initialProject.id);
-    const unsubProject = onSnapshot(projectRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const updatedData = { id: docSnap.id, ...docSnap.data() } as Project;
-        setCurrentProject(updatedData);
-        setEditTitle(updatedData.title);
-        setEditTag(updatedData.tag || '');
-      }
-    });
-
-    return () => unsubProject();
-  }, [initialProject.id]);
-
-  useEffect(() => {
-    setLoadingTasks(true);
-    const q = query(collection(db, 'tasks'), where('projectId', '==', currentProject.id));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedTasks: Task[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...(docSnap.data() as Omit<Task, 'id'>),
-      }));
-      setTasks(fetchedTasks);
-      setLoadingTasks(false);
-    });
-
-    return () => unsubscribe();
-  }, [currentProject.id]);
-
-  const filteredTasks = useMemo(() => {
-    const activeTasks = tasks.filter((t) => t.archived !== true);
-  
-    if (filter === 'all') return activeTasks;
-  return activeTasks.filter((t) => t.status === filter);
-  }, [tasks, filter]);
-
-  const computedProgress = useMemo(() => {
-    const activeTasks = tasks.filter((t) => t.archived !== true);
-    const totalCount = activeTasks.length;
-    const doneCount = activeTasks.filter((t) => t.status === 'done').length;
-
-    return totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : currentProject.progress || 0;
-  }, [tasks, currentProject.progress]);
-
-  const toggleStatus = useCallback(async (taskId: string, currentStatus: TaskStatus) => {
-    if (!user) return;
-
-    const nextStatus: TaskStatus =
-      currentStatus === 'todo'
-        ? 'inprogress'
-        : currentStatus === 'inprogress'
-        ? 'done'
-        : 'todo';
-
-    try {
-      const taskRef = doc(db, 'tasks', taskId);
-      await updateDoc(taskRef, { status: nextStatus });
-
-      const targetTask = tasks.find((t) => t.id === taskId);
-
-      if (
-        nextStatus === 'done' && 
-        currentStatus !== 'done' && 
-        targetTask && 
-        currentProject.createdBy && 
-        currentProject.createdBy !== user.uid
-      ) {
-        const assigneeInfo = targetTask.assigneeId ? usersMap[targetTask.assigneeId] : null;
-        const assigneeName = assigneeInfo?.fullName || 'A teammate';
-
-        await sendNotification({
-          recipientId: currentProject.createdBy,
-          senderId: user.uid,
-          type: 'task',
-          text: `${assigneeName} completed "${targetTask.title}"`,
-          projectId: targetTask.projectId,
-          taskId: targetTask.id,
-        });
-      }
-    } catch (err) {
-      console.error('Error updating task status:', err);
-    }
-  }, [tasks, user, usersMap, currentProject.createdBy, currentProject.title]);
-
-  const isOwner = currentProject.createdBy === user?.uid;
-
-  const handleMenuAction = (action: string) => {
-    setMenuVisible(false);
-    switch (action) {
-      case 'edit':
-        setEditModalVisible(true);
-        break;
-      case 'members':
-        setMembersModalVisible(true);
-        break;
-      case 'delete':
-        setDeleteConfirmVisible(true);
-        break;
-      case 'archived':
-        onOpenArchived();
-        break;
-    }
-  };
-
-  const handleDeleteProject = async () => {
-    try {
-      setIsDeleting(true);
-      const tasksQuery = query(collection(db, 'tasks'), where('projectId', '==', currentProject.id));
-      const tasksSnapshot = await getDocs(tasksQuery);
-      const deletePromises = tasksSnapshot.docs.map((taskDoc) => deleteDoc(taskDoc.ref));
-      await Promise.all(deletePromises);
-
-      await deleteDoc(doc(db, 'projects', currentProject.id));
-
-      setIsDeleting(false);
-      setDeleteConfirmVisible(false);
-      onBack();
-    } catch (error) {
-      console.error('Error deleting project:', error);
-      setIsDeleting(false);
-    }
-  };
-
-  const handleUpdateProject = async () => {
-    if (!editTitle.trim()) return;
-    try {
-      setIsUpdating(true);
-      const projectRef = doc(db, 'projects', currentProject.id);
-      await updateDoc(projectRef, {
-        title: editTitle.trim(),
-        tag: editTag.trim() || 'General',
-      });
-
-      setIsUpdating(false);
-      setEditModalVisible(false);
-    } catch (error) {
-      console.error('Error updating project:', error);
-      setIsUpdating(false);
-    }
-  };
-
-  const handleSearchUser = async (text: string) => {
-    setSearchEmail(text);
-    const trimmed = text.trim().toLowerCase();
-
-    if (!trimmed) {
-      setFoundUser(null);
-      setNotFound(false);
-      return;
-    }
-
-    setSearching(true);
-    setNotFound(false);
-    setFoundUser(null);
-
-    try {
-      const q = query(collection(db, 'users'), where('email', '==', trimmed));
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        const userDoc = snapshot.docs[0];
-        const data = userDoc.data();
-        setFoundUser({
-          id: userDoc.id,
-          name: data.fullName || 'User',
-          email: data.email || trimmed,
-        });
-        setNotFound(false);
-      } else {
-        setFoundUser(null);
-        setNotFound(true);
-      }
-    } catch (error) {
-      console.error('Error searching user:', error);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleAddMember = async (userId: string) => {
-    try {
-      setMemberActionLoading(true);
-      const projectRef = doc(db, 'projects', currentProject.id);
-      await updateDoc(projectRef, {
-        memberIds: arrayUnion(userId),
-      });
-
-      setSearchEmail('');
-      setFoundUser(null);
-      setNotFound(false);
-    } catch (error) {
-      console.error('Error adding member:', error);
-    } finally {
-      setMemberActionLoading(false);
-    }
-  };
-
-  const handleConfirmRemoveMember = async () => {
-    if (!memberToDelete) return;
-
-    try {
-      setMemberActionLoading(true);
-      const projectRef = doc(db, 'projects', currentProject.id);
-      await updateDoc(projectRef, {
-        memberIds: arrayRemove(memberToDelete.id),
-      });
-    } catch (error) {
-      console.error('Error removing member:', error);
-    } finally {
-      setMemberActionLoading(false);
-      setMemberToDelete(null);
-    }
-  };
-
-const renderTaskItem = useCallback(({ item }: { item: Task }) => {
-    const status = item.status || 'todo';
-    const priority = item.priority || 'Low';
-    const pColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.Low;
-
-    const assignee = usersMap[item.assigneeId];
-    const assigneeName = assignee?.fullName || 'User';
-    const assigneeInitials = getInitials(assigneeName);
-    const assigneeFirstName = assigneeName.split(' ')[0];
-
-    return (
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => onTaskSelect(item.id)}
-        style={[
-          styles.taskCard,
-          status === 'done' && styles.taskCardDone,
-          status === 'inprogress' && styles.taskCardInprogress,
-        ]}
-      >
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <TouchableOpacity
-            onPress={() => toggleStatus(item.id, status)}
-            style={[styles.checkbox, status === 'done' && styles.checkboxDone]}
-            activeOpacity={0.8}
-          >
-            {status === 'done' && (
-              <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <Path d="M2 5l2.5 2.5L8 2.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </Svg>
-            )}
-          </TouchableOpacity>
-
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.taskTitle, status === 'done' && styles.taskTitleDone]}>
-              {item.title}
-            </Text>
-
-            <View style={styles.taskMetaRow}>
-              <View style={styles.metaItem}>
-                <View style={styles.assigneeAvatar}>
-                  <Text style={styles.assigneeAvatarText}>{assigneeInitials}</Text>
-                </View>
-                <Text style={styles.metaText}>{assigneeFirstName}</Text>
-              </View>
-
-              <Text style={{ color: '#CBD5E1' }}>·</Text>
-
-              <View style={[styles.dueDateBadge, item.overdue && { backgroundColor: '#FEE2E2' }]}>
-                <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <Rect x="1" y="2" width="8" height="7" rx="1.5" stroke={item.overdue ? '#DC2626' : '#94A3B8'} strokeWidth="1" />
-                  <Path d="M3 1v2M7 1v2M1 4.5h8" stroke={item.overdue ? '#DC2626' : '#94A3B8'} strokeWidth="1" strokeLinecap="round" />
-                </Svg>
-                <Text style={[styles.metaText, item.overdue && { color: '#DC2626' }]}>
-                  {formatDueDate(item.dueDate)}
-                </Text>
-              </View>
-
-              <View style={[styles.priorityPill, { backgroundColor: pColor.bg }]}>
-                <Text style={[styles.priorityText, { color: pColor.text }]}>{priority}</Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => toggleStatus(item.id, status)}
-                style={[
-                  styles.statusPill,
-                  status === 'inprogress' && { backgroundColor: '#C5D5E4' },
-                  status === 'done' && { backgroundColor: '#DCFCE7' },
-                ]}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.statusPillText,
-                    status === 'inprogress' && { color: '#1E293B' },
-                    status === 'done' && { color: '#16A34A' },
-                  ]}
-                >
-                  {STATUS_LABELS[status]}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  }, [usersMap, toggleStatus, getInitials, onTaskSelect]);
+  const assignee = usersMap[item.assigneeId];
+  const assigneeName = assignee?.fullName || 'User';
+  const assigneeInitials = getInitials(assigneeName);
 
   return (
-    <View style={styles.container}>
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={() => onTaskSelect(item.id)}
+      style={[
+        styles.taskCard,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        status === 'done' && { backgroundColor: isDark ? '#162032' : '#F1F5F9', opacity: 0.7 },
+        status === 'inprogress' && { borderColor: colors.secondary },
+      ]}
+    >
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <TouchableOpacity
+          onPress={() => onToggleStatus(item.id, status)}
+          style={[
+            styles.checkbox, 
+            { borderColor: colors.textMuted },
+            status === 'done' && { borderColor: colors.primary, backgroundColor: colors.primary }
+          ]}
+          activeOpacity={0.8}
+        >
+          {status === 'done' && (
+            <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <Path d="M2 5l2.5 2.5L8 2.5" stroke={colors.white} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          )}
+        </TouchableOpacity>
+
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.taskTitle, { color: colors.text }, status === 'done' && styles.taskTitleDone]}>
+            {item.title}
+          </Text>
+
+          <View style={styles.taskMetaRow}>
+            <View style={styles.metaItem}>
+              <View style={[styles.assigneeAvatar, { backgroundColor: colors.primary }]}>
+                <Text style={[styles.assigneeAvatarText, { color: colors.white }]}>{assigneeInitials}</Text>
+              </View>
+              <Text style={[styles.metaText, { color: colors.textMuted }]}>{assigneeName.split(' ')[0]}</Text>
+            </View>
+
+            <Text style={{ color: colors.border }}>·</Text>
+
+            <View style={[styles.dueDateBadge, { backgroundColor: colors.toggleBg }, item.overdue && { backgroundColor: colors.dangerLight }]}>
+              <Svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <Rect x="1" y="2" width="8" height="7" rx="1.5" stroke={item.overdue ? colors.danger : colors.textMuted} strokeWidth="1" />
+                <Path d="M3 1v2M7 1v2M1 4.5h8" stroke={item.overdue ? colors.danger : colors.textMuted} strokeWidth="1" strokeLinecap="round" />
+              </Svg>
+              <Text style={[styles.metaText, { color: colors.textMuted }, item.overdue && { color: colors.danger }]}>
+                {formatDueDate(item.dueDate)}
+              </Text>
+            </View>
+
+            <View style={[styles.priorityPill, { backgroundColor: pColor.bg }]}>
+              <Text style={[styles.priorityText, { color: pColor.text }]}>{priority}</Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => onToggleStatus(item.id, status)}
+              style={[
+                styles.statusPill,
+                { backgroundColor: colors.toggleBg },
+                status === 'inprogress' && { backgroundColor: colors.secondary },
+                status === 'done' && { backgroundColor: '#DCFCE7' },
+              ]}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.statusPillText,
+                  { color: colors.textMuted },
+                  status === 'inprogress' && { color: colors.text },
+                  status === 'done' && { color: '#16A34A' },
+                ]}
+              >
+                {STATUS_LABELS[status]}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect, onOpenArchived }: Props) {
+  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+
+  const {
+    user,
+    usersMap,
+    getInitials,
+    getMemberColor,
+    currentProject,
+    filter,
+    setFilter,
+    tasks,
+    loadingTasks,
+    activeTab,
+    setActiveTab,
+    modalVisible,
+    setModalVisible,
+    menuVisible,
+    setMenuVisible,
+    deleteConfirmVisible,
+    setDeleteConfirmVisible,
+    isDeleting,
+    editTitle,
+    setEditTitle,
+    editTag,
+    setEditTag,
+    isUpdating,
+    transferOwnershipModalVisible,
+    selectedNewOwner,
+    setSelectedNewOwner,
+    isTransferring,
+    leaveAlertVisible,
+    setLeaveAlertVisible,
+    leaveConfirmVisible,
+    setLeaveConfirmVisible,
+    isLeaving,
+    settingsModalVisible,
+    setSettingsModalVisible,
+    searchEmail,
+    setSearchEmail,
+    searching,
+    foundUser,
+    notFound,
+    memberActionLoading,
+    memberToDelete,
+    setMemberToDelete,
+    isStarred,
+    isOwner,
+    filteredTasks,
+    computedProgress,
+    toggleStatus,
+    handleTransferOwnership,
+    handleLeaveProject,
+    handleMenuAction,
+    handleDeleteProject,
+    handleUpdateProject,
+    handleAddMember,
+    handleConfirmRemoveMember,
+  } = useProjectDetails(initialProject, onBack);
+
+  const renderTaskItem = useCallback(
+    ({ item }: { item: Task }) => (
+      <TaskItem
+        item={item}
+        usersMap={usersMap}
+        getInitials={getInitials}
+        onTaskSelect={onTaskSelect}
+        onToggleStatus={toggleStatus}
+      />
+    ),
+    [usersMap, getInitials, onTaskSelect, toggleStatus]
+  );
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.primary }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={onBack} style={styles.iconBtn} activeOpacity={0.8}>
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <Path d="M10 4L6 8l4 4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <Path d="M10 4L6 8l4 4" stroke={colors.white} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
           </TouchableOpacity>
 
           <View style={{ flex: 1 }}>
             <Text style={styles.tagText}>{currentProject.tag || 'General'}</Text>
-            <Text style={styles.projectTitle} numberOfLines={1}>
+            <Text style={[styles.projectTitle, { color: colors.white }]} numberOfLines={1}>
               {currentProject.title}
             </Text>
           </View>
@@ -423,40 +258,23 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
           <View>
             <TouchableOpacity style={styles.iconBtn} onPress={() => setMenuVisible(true)} activeOpacity={0.8}>
               <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <Circle cx="8" cy="3" r="1.2" fill="#fff" />
-                <Circle cx="8" cy="8" r="1.2" fill="#fff" />
-                <Circle cx="8" cy="13" r="1.2" fill="#fff" />
+                <Circle cx="8" cy="3" r="1.2" fill={colors.white} />
+                <Circle cx="8" cy="8" r="1.2" fill={colors.white} />
+                <Circle cx="8" cy="13" r="1.2" fill={colors.white} />
               </Svg>
             </TouchableOpacity>
 
-            <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-              <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-                <View style={styles.overlay}>
-                  <View style={styles.menuContainer}>
-                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('members')}>
-                      <Text style={styles.menuText}>Manage Members</Text>
-                    </TouchableOpacity>
-
-                    {isOwner && (
-                      <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('edit')}>
-                        <Text style={styles.menuText}>Edit Project</Text>
-                      </TouchableOpacity>
-                    )}
-                    {isOwner && (
-                      <>
-                        <View style={styles.divider} />
-                        <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('delete')}>
-                          <Text style={[styles.menuText, { color: '#DC2626' }]}>Delete Project</Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                    <TouchableOpacity style={styles.menuItem} onPress={() => handleMenuAction('archived')}>
-                      <Text style={styles.menuText}>Archived Tasks</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </Modal>
+            <ProjectMenuModal
+              visible={menuVisible}
+              onClose={() => setMenuVisible(false)}
+              isStarred={isStarred}
+              isOwner={isOwner}
+              onMenuAction={(action) => handleMenuAction(action, onOpenArchived)}
+              onOpenSettings={() => {
+                setMenuVisible(false);
+                setSettingsModalVisible(true);
+              }}
+            />
           </View>
         </View>
 
@@ -473,96 +291,107 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
                   key={uid}
                   style={[
                     styles.avatar,
-                    { backgroundColor: color, marginLeft: idx > 0 ? -8 : 0 },
+                    { backgroundColor: color, marginLeft: idx > 0 ? -8 : 0, borderColor: colors.primary },
                   ]}
                 >
-                  <Text style={styles.avatarText}>{initials}</Text>
+                  <Text style={[styles.avatarText, { color: colors.text }]}>{initials}</Text>
                 </View>
               );
             })}
-            {currentProject.memberIds?.length > 4 && (
-              <View style={[styles.avatar, styles.extraAvatar]}>
-                <Text style={styles.extraAvatarText}>+{currentProject.memberIds.length - 4}</Text>
+            {currentProject.memberIds && currentProject.memberIds.length > 4 && (
+              <View style={[styles.avatar, styles.extraAvatar, { borderColor: colors.primary }]}>
+                <Text style={[styles.extraAvatarText, { color: colors.white }]}>+{currentProject.memberIds.length - 4}</Text>
               </View>
             )}
           </View>
 
           <View style={styles.progressContainer}>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${computedProgress}%` }]} />
+              <View style={[styles.progressBarFill, { width: `${computedProgress}%`, backgroundColor: colors.secondary }]} />
             </View>
-            <Text style={styles.progressText}>{computedProgress}%</Text>
+            <Text style={[styles.progressText, { color: colors.secondary }]}>{computedProgress}%</Text>
           </View>
         </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterWrapper}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          {([
-            { key: 'all', label: 'All' },
-            { key: 'todo', label: 'To Do' },
-            { key: 'inprogress', label: 'In Progress' },
-            { key: 'done', label: 'Done' },
-          ] as const).map((tab) => {
-            const count =
-              tab.key === 'all'
-                ? tasks.length
-                : tasks.filter((t) => t.status === tab.key).length;
+     {/* Filter Tabs */}
+<View style={styles.filterWrapper}>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+    {FILTER_TABS.map((tab) => {
+      const count =
+        tab.key === 'all'
+          ? tasks.filter((t) => !t.archived).length // تعديل ليعرض المهام غير المؤرشفة فقط
+          : tasks.filter((t) => !t.archived && t.status === tab.key).length; // استبعاد المؤرشفة من باقي الفلاتر أيضاً
 
-            const isSelected = filter === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                onPress={() => setFilter(tab.key)}
-                style={[
-                  styles.tabBtn,
-                  isSelected ? styles.tabBtnActive : styles.tabBtnInactive,
-                ]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.tabLabel, isSelected ? styles.tabLabelActive : styles.tabLabelInactive]}>
-                  {tab.label}
-                </Text>
-                {tab.key !== 'all' && (
-                  <View style={[styles.badge, isSelected ? styles.badgeActive : styles.badgeInactive]}>
-                    <Text style={[styles.badgeText, isSelected ? styles.badgeTextActive : styles.badgeTextInactive]}>
-                      {count}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
+      const isSelected = filter === tab.key;
+      return (
+        <TouchableOpacity
+          key={tab.key}
+          onPress={() => setFilter(tab.key)}
+          style={[
+            styles.tabBtn, 
+            { backgroundColor: colors.card, borderColor: colors.border },
+            isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }
+          ]}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabLabel, { color: colors.textMuted }, isSelected && { color: colors.white }]}>
+            {tab.label}
+          </Text>
+          {/* لو حابب تظهر الـ badge لتبويب 'all' كمان شيل الشرط ده، أو سيبه لو مش عايزه يظهر */}
+          {tab.key !== 'all' && (
+            <View style={[styles.badge, { backgroundColor: colors.toggleBg }, isSelected && { backgroundColor: 'rgba(255, 255, 255, 0.2)' }]}>
+              <Text style={[styles.badgeText, { color: colors.textMuted }, isSelected && { color: colors.white }]}>
+                {count}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    })}
+  </ScrollView>
+</View>
       {/* Task List (FlatList) */}
       {loadingTasks ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
           data={filteredTasks}
           keyExtractor={(item) => item.id}
           renderItem={renderTaskItem}
-          contentContainerStyle={styles.taskList}
+          contentContainerStyle={[styles.taskList, filteredTasks.length === 0 && styles.emptyListContainer]}
           initialNumToRender={8}
           maxToRenderPerBatch={10}
           windowSize={5}
-          ListEmptyComponent={<Text style={styles.emptyText}>No tasks found in this section.</Text>}
+          ListEmptyComponent={
+            tasks.filter((t) => !t.archived).length === 0 ? (
+              <EmptyStateScreen
+                variant="tasks"
+                onCTA={() => setModalVisible(true)}
+              />
+            ) : filter !== 'all' ? (
+              <EmptyStateScreen
+                variant="tasks"
+                title={`No ${filter === 'todo' ? 'To Do' : filter === 'inprogress' ? 'In Progress' : 'Done'} Tasks`}
+                subtitle="You don't have any tasks in this status right now."
+              />
+            ) : null
+          }
         />
       )}
 
       {/* Footer / Add Task Button */}
-      <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addTaskBtn} activeOpacity={0.9}>
-          <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <Path d="M8 3v10M3 8h10" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-          </Svg>
-          <Text style={styles.addTaskBtnText}>Add New Task</Text>
-        </TouchableOpacity>
+      <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 16), backgroundColor: colors.background }]}>
+        {filteredTasks.length > 0 && (
+          <TouchableOpacity onPress={() => setModalVisible(true)} style={[styles.addTaskBtn, { backgroundColor: colors.primary }]} activeOpacity={0.9}>
+            <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <Path d="M8 3v10M3 8h10" stroke={colors.white} strokeWidth="2" strokeLinecap="round" />
+            </Svg>
+            <Text style={[styles.addTaskBtnText, { color: colors.white }]}>Add New Task</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <CreateTaskModal
@@ -572,106 +401,35 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
         onTaskCreated={() => setModalVisible(false)}
       />
 
-      {/* Modal Manage Members */}
-      <Modal
-        visible={membersModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMembersModalVisible(false)}
-      >
-        <View style={styles.modalOverlayCenter}>
-          <View style={styles.dialogContainer}>
-            <Text style={styles.dialogTitle}>Manage Members</Text>
-
-            <Text style={styles.inputLabel}>Search by Email</Text>
-            <View style={styles.searchBoxContainer}>
-              <TextInput
-                style={styles.modalInputSearch}
-                value={searchEmail}
-                onChangeText={handleSearchUser}
-                placeholder="Enter user email..."
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              {searching && <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchSpinner} />}
-            </View>
-
-            {notFound && <Text style={styles.notFoundText}>User not found</Text>}
-
-            {foundUser && (
-              <View style={styles.selectCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.selectName}>{foundUser.name}</Text>
-                  <Text style={styles.selectEmail}>{foundUser.email}</Text>
-                </View>
-                {currentProject.memberIds?.includes(foundUser.id) ? (
-                  <Text style={styles.alreadyAddedText}>Already added</Text>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.addMemberBtn}
-                    onPress={() => handleAddMember(foundUser.id)}
-                    disabled={memberActionLoading}
-                  >
-                    {memberActionLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.addMemberBtnText}>Add</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* Project Current Members List */}
-            <Text style={[styles.inputLabel, { marginTop: 16 }]}>
-              Project Members ({currentProject.memberIds?.length || 0})
-            </Text>
-            <ScrollView style={styles.membersListScroll} nestedScrollEnabled>
-              {currentProject.memberIds?.map((uid) => {
-                const info = usersMap[uid];
-                const name = info?.fullName || 'User';
-                const isThisMemberOwner = uid === currentProject.createdBy;
-
-                return (
-                  <View key={uid} style={styles.memberRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.memberName}>
-                        {name} {isThisMemberOwner ? '(Owner)' : ''}
-                      </Text>
-                    </View>
-
-                    {isOwner && !isThisMemberOwner && (
-                      <TouchableOpacity
-                        onPress={() => setMemberToDelete({ id: uid, name })}
-                        style={styles.removeMemberBtn}
-                      >
-                        <Svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <Path d="M3 3l8 8M11 3l-8 8" stroke="#DC2626" strokeWidth="1.8" strokeLinecap="round" />
-                        </Svg>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.dialogActions}>
-              <TouchableOpacity
-                style={[styles.dialogBtn, styles.cancelBtn]}
-                onPress={() => {
-                  setMembersModalVisible(false);
-                  setSearchEmail('');
-                  setFoundUser(null);
-                  setNotFound(false);
-                }}
-              >
-                <Text style={styles.cancelBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Project Settings Modal */}
+      <ProjectSettingsModal
+        visible={settingsModalVisible}
+        onClose={() => setSettingsModalVisible(false)}
+        currentProject={currentProject}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        editTag={editTag}
+        setEditTag={setEditTag}
+        isOwner={isOwner}
+        user={user}
+        usersMap={usersMap}
+        selectedNewOwner={selectedNewOwner}
+        setSelectedNewOwner={setSelectedNewOwner}
+        isTransferring={isTransferring}
+        handleTransferOwnership={handleTransferOwnership}
+        isUpdating={isUpdating}
+        handleUpdateProject={handleUpdateProject}
+        searchEmail={searchEmail}
+        setSearchEmail={setSearchEmail}
+        searching={searching}
+        notFound={notFound}
+        foundUser={foundUser}
+        memberActionLoading={memberActionLoading}
+        handleAddMember={handleAddMember}
+        setMemberToDelete={setMemberToDelete}
+      />
 
       {/* Confirmation Modals */}
       <ConfirmationModal
@@ -679,7 +437,7 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
         title="Delete Project"
         message={`Are you sure you want to delete "${currentProject.title}"? All associated tasks will be permanently removed.`}
         confirmText="Delete"
-        confirmBtnColor="#DC2626"
+        confirmBtnColor={colors.danger}
         loading={isDeleting}
         onConfirm={handleDeleteProject}
         onCancel={() => setDeleteConfirmVisible(false)}
@@ -689,39 +447,37 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
         title="Remove Member"
         message={`Are you sure you want to remove ${memberToDelete?.name || 'this member'} from the project?`}
         confirmText="Remove"
-        confirmBtnColor="#DC2626"
+        confirmBtnColor={colors.danger}
         loading={memberActionLoading}
         onConfirm={handleConfirmRemoveMember}
         onCancel={() => setMemberToDelete(null)}
       />
 
-      {/* Custom Edit Project Modal */}
-      <Modal visible={editModalVisible} transparent animationType="fade" onRequestClose={() => setEditModalVisible(false)}>
-        <View style={styles.modalOverlayCenter}>
-          <View style={styles.dialogContainer}>
-            <Text style={styles.dialogTitle}>Edit Project</Text>
+      {/* Leave Alert for Owner */}
+      <ConfirmationModal
+        visible={leaveAlertVisible}
+        title="Action Required"
+        message="You are the owner of this project. You must transfer ownership to another member before leaving."
+        confirmText="Transfer Ownership"
+        confirmBtnColor={colors.primary}
+        onConfirm={() => {
+          setLeaveAlertVisible(false);
+          setSettingsModalVisible(true);
+        }}
+        onCancel={() => setLeaveAlertVisible(false)}
+      />
 
-            <Text style={styles.inputLabel}>Title</Text>
-            <TextInput style={styles.modalInput} value={editTitle} onChangeText={setEditTitle} placeholder="Project Title" />
-
-            <Text style={styles.inputLabel}>Tag</Text>
-            <TextInput style={styles.modalInput} value={editTag} onChangeText={setEditTag} placeholder="Tag (e.g., Mobile, Web)" />
-
-            <View style={styles.dialogActions}>
-              <TouchableOpacity
-                style={[styles.dialogBtn, styles.cancelBtn]}
-                onPress={() => setEditModalVisible(false)}
-                disabled={isUpdating}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.dialogBtn, styles.saveBtn]} onPress={handleUpdateProject} disabled={isUpdating}>
-                {isUpdating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveBtnText}>Save</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Leave Confirmation for Regular Member */}
+      <ConfirmationModal
+        visible={leaveConfirmVisible}
+        title="Leave Project"
+        message={`Are you sure you want to leave "${currentProject.title}"? You will lose access to all tasks.`}
+        confirmText="Leave"
+        confirmBtnColor={colors.danger}
+        loading={isLeaving}
+        onConfirm={handleLeaveProject}
+        onCancel={() => setLeaveConfirmVisible(false)}
+      />
     </View>
   );
 }
@@ -729,12 +485,13 @@ const renderTaskItem = useCallback(({ item }: { item: Task }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+  },
+  emptyListContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   header: {
-    backgroundColor: COLORS.primary || '#566551',
     paddingHorizontal: 20,
-    // paddingTop: 12,
     paddingBottom: 16,
   },
   headerTop: {
@@ -759,40 +516,6 @@ const styles = StyleSheet.create({
   projectTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-end',
-    paddingTop: 30,
-    paddingRight: 30,
-  },
-  menuContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 6,
-    width: 180,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  menuText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1E293B',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 4,
   },
   headerFooter: {
     flexDirection: 'row',
@@ -810,12 +533,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#566551',
   },
   avatarText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#1E293B',
   },
   extraAvatar: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -824,7 +545,6 @@ const styles = StyleSheet.create({
   extraAvatarText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   progressContainer: {
     flexDirection: 'row',
@@ -841,12 +561,10 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: '100%',
     borderRadius: 3,
-    backgroundColor: '#C5D5E4',
   },
   progressText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#C5D5E4',
   },
   filterWrapper: {
     paddingVertical: 12,
@@ -863,23 +581,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1.5,
   },
-  tabBtnActive: {
-    backgroundColor: COLORS.primary || '#566551',
-    borderColor: COLORS.primary || '#566551',
-  },
-  tabBtnInactive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E2E8F0',
-  },
   tabLabel: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  tabLabelActive: {
-    color: '#FFFFFF',
-  },
-  tabLabelInactive: {
-    color: '#64748B',
   },
   badge: {
     marginLeft: 6,
@@ -887,21 +591,9 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 10,
   },
-  badgeActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  badgeInactive: {
-    backgroundColor: '#F1F5F9',
-  },
   badgeText: {
     fontSize: 10,
     fontWeight: '600',
-  },
-  badgeTextActive: {
-    color: '#FFFFFF',
-  },
-  badgeTextInactive: {
-    color: '#94A3B8',
   },
   loaderContainer: {
     flex: 1,
@@ -913,49 +605,23 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     gap: 10,
   },
-  emptyText: {
-    textAlign: 'center',
-    color: '#94A3B8',
-    marginTop: 40,
-    fontSize: 14,
-  },
   taskCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-  },
-  taskCardDone: {
-    backgroundColor: '#F1F5F9',
-    opacity: 0.7,
-  },
-  taskCardInprogress: {
-    borderColor: '#C5D5E4',
-    shadowColor: '#C5D5E4',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 2,
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#CBD5E1',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
-  checkboxDone: {
-    borderColor: COLORS.primary || '#566551',
-    backgroundColor: COLORS.primary || '#566551',
-  },
   taskTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B',
     lineHeight: 20,
     marginBottom: 8,
   },
@@ -978,18 +644,15 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: COLORS.primary || '#566551',
     alignItems: 'center',
     justifyContent: 'center',
   },
   assigneeAvatarText: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   metaText: {
     fontSize: 12,
-    color: '#64748B',
   },
   dueDateBadge: {
     flexDirection: 'row',
@@ -998,7 +661,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
   },
   priorityPill: {
     paddingHorizontal: 8,
@@ -1014,12 +676,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
-    backgroundColor: '#F1F5F9',
   },
   statusPillText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#64748B',
   },
   footerContainer: {
     position: 'absolute',
@@ -1027,12 +687,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 20,
-    // paddingBottom: 20,
     paddingTop: 12,
-    backgroundColor: '#F8F9FA',
   },
   addTaskBtn: {
-    backgroundColor: COLORS.primary || '#566551',
     paddingVertical: 14,
     borderRadius: 16,
     flexDirection: 'row',
@@ -1041,187 +698,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addTaskBtnText: {
-    color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 14,
-  },
-  modalOverlayCenter: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  dialogContainer: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 6,
-    maxHeight: '85%',
-  },
-  dialogTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginBottom: 8,
-  },
-  dialogMessage: {
-    fontSize: 14,
-    color: '#64748B',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  dialogActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 14,
-  },
-  dialogBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  cancelBtn: {
-    backgroundColor: '#F1F5F9',
-  },
-  cancelBtnText: {
-    color: '#64748B',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  deleteBtn: {
-    backgroundColor: '#DC2626',
-  },
-  deleteBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  saveBtn: {
-    backgroundColor: COLORS.primary || '#566551',
-  },
-  saveBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  modalInput: {
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: '#1E293B',
-  },
-  searchBoxContainer: {
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  modalInputSearch: {
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    paddingRight: 36,
-    fontSize: 14,
-    color: '#1E293B',
-  },
-  searchSpinner: {
-    position: 'absolute',
-    right: 10,
-  },
-  notFoundText: {
-    color: '#DC2626',
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'left',
-  },
-  selectCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
-    padding: 10,
-    marginTop: 8,
-  },
-  selectName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
-  selectEmail: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  alreadyAddedText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  addMemberBtn: {
-    backgroundColor: COLORS.primary || '#566551',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  addMemberBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  membersListScroll: {
-    maxHeight: 180,
-    marginTop: 4,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  memberAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberAvatarText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  memberName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
-  memberEmail: {
-    fontSize: 11,
-    color: '#64748B',
-  },
-  removeMemberBtn: {
-    padding: 6,
   },
 });

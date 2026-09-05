@@ -1,16 +1,16 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { User, onAuthStateChanged, signOut } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react';
+import { User, onAuthStateChanged, signOut, updateProfile as updateAuthProfile } from 'firebase/auth';
 import {
   doc,
   collection,
   query,
   where,
   onSnapshot,
-  orderBy,
   documentId,
-  collectionGroup,
   updateDoc,
+  setDoc,
   writeBatch,
+  getDocs
 } from 'firebase/firestore';
 import { auth, db } from '../api/firebase';
 import { UserProfile } from '../types/user';
@@ -55,6 +55,7 @@ interface AppContextType {
   getInitials: (name?: string) => string;
   getMemberColor: (str: string) => string;
   logout: () => Promise<void>;
+  updateProfile: (data: { fullName?: string; jobTitle?: string; company?: string }) => Promise<void>;
   markNotificationAsRead: (notificationId: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
   clearAllNotifications: () => Promise<void>;
@@ -84,9 +85,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [usersMap, setUsersMap] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);
 
+  const usersMapRef = useRef(usersMap);
+  usersMapRef.current = usersMap;
+
   const userInitials = useMemo(() => {
-    return getInitials(profileData?.fullName);
-  }, [profileData?.fullName]);
+    return getInitials(profileData?.fullName || user?.displayName || '');
+  }, [profileData?.fullName, user?.displayName]);
 
   // 1. Authentication listener
   useEffect(() => {
@@ -112,10 +116,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!user) return;
 
+    let loadedCount = 0;
+    const checkLoading = () => {
+      loadedCount++;
+      if (loadedCount >= 3) setLoading(false);
+    };
+
     const unsubUser = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
       if (docSnap.exists()) {
         setProfileData({ uid: user.uid, ...docSnap.data() } as UserProfile);
       }
+      checkLoading();
     });
 
     const qProjects = query(
@@ -124,6 +135,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     const unsubProjects = onSnapshot(qProjects, (snapshot) => {
       setUserProjects(snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
+      checkLoading();
     });
 
     const qUserTasks = query(
@@ -132,7 +144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     const unsubUserTasks = onSnapshot(qUserTasks, (snapshot) => {
       setUserTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Task)));
-      setLoading(false);
+      checkLoading();
     });
 
     return () => {
@@ -142,7 +154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user]);
 
-  // 3. Sync all project tasks in chunks (Firestore 'in' query supports up to 30 items)
+  // 3. Sync all project tasks
   useEffect(() => {
     if (!user || userProjects.length === 0) {
       setAllProjectTasks([]);
@@ -155,16 +167,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       chunks.push(projectIds.slice(i, i + 30));
     }
 
-    const unsubs = chunks.map((chunk) => {
+    const chunkResults: Record<number, Task[]> = {};
+
+    const unsubs = chunks.map((chunk, index) => {
       const q = query(collection(db, 'tasks'), where('projectId', 'in', chunk));
       return onSnapshot(q, (snapshot) => {
-        const fetchedTasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
-
-        setAllProjectTasks((prev) => {
-          const taskMap = new Map(prev.map((t) => [t.id, t]));
-          fetchedTasks.forEach((t) => taskMap.set(t.id, t));
-          return Array.from(taskMap.values());
-        });
+        chunkResults[index] = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
+        const combined = Object.values(chunkResults).flat();
+        setAllProjectTasks(combined);
       });
     });
 
@@ -173,29 +183,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [user, userProjects]);
 
-  // 4. Subcollection listener: Fetch all task attachments
-  useEffect(() => {
-    if (!user) {
-      setAllAttachments([]);
+// 4. Attachments relative to all project tasks (Subcollection fetch)
+useEffect(() => {
+  let isMounted = true;
+
+  const fetchUserProjectsAttachments = async () => {
+    if (!user || userProjects.length === 0) {
+      if (isMounted) setAllAttachments([]);
       return;
     }
 
-    const qAttachments = collectionGroup(db, 'attachments');
-    const unsubAttachments = onSnapshot(qAttachments, (snapshot) => {
-      const fetchedFiles: TaskAttachmentWithMeta[] = snapshot.docs.map((d) => {
-        const parentTaskId = d.ref.parent.parent?.id;
-        return {
-          id: d.id,
-          taskId: parentTaskId,
-          ...d.data(),
-        } as TaskAttachmentWithMeta;
+    try {
+      const userProjectIds = userProjects.map((p) => p.id);
+      const validTasks = allProjectTasks.filter((task) => 
+        userProjectIds.includes(task.projectId)
+      );
+
+      if (validTasks.length === 0) {
+        if (isMounted) setAllAttachments([]);
+        return;
+      }
+
+      const attachmentPromises = validTasks.map(async (task) => {
+        try {
+          const attachmentsRef = collection(db, 'tasks', task.id, 'attachments');
+          const snapshot = await getDocs(attachmentsRef);
+          
+          if (snapshot.empty) return [];
+
+          return snapshot.docs.map((docSnap) => {
+            const data = docSnap.data();
+            return {
+              id: docSnap.id,
+              taskId: task.id,
+              name: data.name || data.fileName || 'Untitled',
+              type: data.type || data.fileType || '',
+              size: data.size || '0 MB',
+              url: data.url || data.downloadUrl || '',
+              uploadedBy: data.uploadedBy || '',
+              createdAt: data.createdAt || new Date(),
+            };
+          });
+        } catch (err) {
+          return [];
+        }
       });
 
-      setAllAttachments(fetchedFiles);
-    });
+      const results = await Promise.all(attachmentPromises);
+      const flattenedAttachments = results.flat();
 
-    return () => unsubAttachments();
-  }, [user]);
+      if (isMounted) {
+        setAllAttachments(flattenedAttachments);
+      }
+    } catch (e) {
+      console.error("Error fetching filtered attachments:", e);
+      if (isMounted) setAllAttachments([]);
+    }
+  };
+
+  fetchUserProjectsAttachments();
+
+  return () => {
+    isMounted = false;
+  };
+}, [user, userProjects, allProjectTasks]);
 
   // 5. User profiles cache for all project members
   useEffect(() => {
@@ -205,7 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       new Set(userProjects.flatMap((p) => p.memberIds || []))
     );
 
-    const missingMemberIds = allMemberIds.filter((id) => !usersMap[id]);
+    const missingMemberIds = allMemberIds.filter((id) => !usersMapRef.current[id]);
     if (missingMemberIds.length === 0) return;
 
     const chunks: string[][] = [];
@@ -227,7 +278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [user, userProjects, usersMap]);
+  }, [user, userProjects]);
 
   // 6. Real-time Notifications Listener
   useEffect(() => {
@@ -261,7 +312,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, [user]);
 
-  // Firestore update helper: Mark single notification as read
+  const updateProfileData = async (data: { fullName?: string; jobTitle?: string; company?: string }) => {
+    if (!user) return;
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+
+      await setDoc(userRef, data, { merge: true });
+
+      if (data.fullName && auth.currentUser) {
+        await updateAuthProfile(auth.currentUser, {
+          displayName: data.fullName,
+        });
+      }
+    } catch (error) {
+      console.error('Error updating profile in Context:', error);
+      throw error;
+    }
+  };
+
   const markNotificationAsRead = async (notificationId: string) => {
     try {
       const notifRef = doc(db, 'notifications', notificationId);
@@ -271,7 +340,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Firestore update helper: Mark all notifications as read using batch writing
   const markAllNotificationsAsRead = async () => {
     const unreadNotifs = notifications.filter((n) => !n.read);
     if (unreadNotifs.length === 0) return;
@@ -288,8 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('Failed to mark all notifications as read:', error);
     }
   };
-  
-  // Firestore helper: Delete all notifications for the current user
+
   const clearAllNotifications = async () => {
     if (notifications.length === 0) return;
 
@@ -327,6 +394,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getInitials,
         getMemberColor,
         logout,
+        updateProfile: updateProfileData,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         clearAllNotifications,
