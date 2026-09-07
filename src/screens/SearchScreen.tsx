@@ -8,7 +8,6 @@ import { getMillis } from "../utils/date";
 import EmptyStateScreen from "../components/EmptyStateScreen";
 import { useTheme } from "../context/ThemeContext";
 
-// استيراد المكونات المنفصلة
 import { SearchHeader } from "../components/search/SearchHeader";
 import { RecentSearches } from "../components/search/RecentSearches";
 import { ProjectCardItem } from "../components/search/ProjectCardItem";
@@ -190,7 +189,6 @@ const SectionHeader = ({ title, showSeeAll, onSeeAll, count, styles }: any) => (
   </View>
 );
 
-// Styles object (نفس الـ styles السابقة معتمدة على الـ colors)
 const createStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },

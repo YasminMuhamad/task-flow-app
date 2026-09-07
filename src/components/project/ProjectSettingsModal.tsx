@@ -159,7 +159,6 @@ export const ProjectSettingsModal = ({
                             key={uid}
                             style={[styles.ownerSelectRow, { backgroundColor: colors.background }, isSelected && [styles.ownerSelectRowActive, { backgroundColor: colors.toggleBg, borderColor: colors.primary }]]}
 onPress={() => {
-    console.log("Selected user ID:", uid); // ضعي هذا هنا للتأكد
     setSelectedNewOwner(uid);
   }}                          >
                             <View style={{ flex: 1 }}>
@@ -180,7 +179,6 @@ onPress={() => {
                     <TouchableOpacity
                       style={[styles.dialogBtn, styles.transferBtn, { backgroundColor: colors.danger }]}
                       onPress={() => {
-      console.log("Transferring to:", selectedNewOwner); // للتأكد في الـ Console
       handleTransferOwnership();
     }}
                       disabled={isTransferring}

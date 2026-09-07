@@ -10,7 +10,7 @@ interface Props {
   formatDate: (date: any) => string;
   onCycleStatus: () => void;
   onCyclePriority: () => void;
-  getMemberColor: (userId: string) => string; // 1. أضفناها هنا
+  getMemberColor: (userId: string) => string;
 }
 
 export function TaskMetaBar({ task, assignee, getInitials, formatDate, onCycleStatus, onCyclePriority, getMemberColor }: Props) {
@@ -39,12 +39,11 @@ export function TaskMetaBar({ task, assignee, getInitials, formatDate, onCycleSt
 
       <View style={[styles.metaBar, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
         <View style={styles.metaItem}>
-          {/* 2. استبدلنا اللون الثابت بـ getMemberColor بناءً على uid بتاع الـ assignee */}
           <View style={[styles.avatar, { backgroundColor: assignee?.uid ? getMemberColor(assignee.uid) : colors.primary }]}>
             <Text style={styles.avatarText}>{getInitials(assignee?.fullName)}</Text>
           </View>
           <View>
-            <Text style={[styles.metaLabelBold, { color: colors.text }]}>{assignee?.fullName || "Unassigned"}</Text>
+            <Text style={[styles.metaLabelBold, { color: colors.text }]}>{assignee?.fullName ? assignee.fullName.split(' ')[0] : 'Unassigned'}</Text>
             <Text style={[styles.metaSub, { color: colors.textMuted }]}>Assignee</Text>
           </View>
         </View>

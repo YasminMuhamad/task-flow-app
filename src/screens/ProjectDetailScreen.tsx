@@ -320,8 +320,8 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
     {FILTER_TABS.map((tab) => {
       const count =
         tab.key === 'all'
-          ? tasks.filter((t) => !t.archived).length // تعديل ليعرض المهام غير المؤرشفة فقط
-          : tasks.filter((t) => !t.archived && t.status === tab.key).length; // استبعاد المؤرشفة من باقي الفلاتر أيضاً
+          ? tasks.filter((t) => !t.archived).length
+          : tasks.filter((t) => !t.archived && t.status === tab.key).length; 
 
       const isSelected = filter === tab.key;
       return (
@@ -338,7 +338,6 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
           <Text style={[styles.tabLabel, { color: colors.textMuted }, isSelected && { color: colors.white }]}>
             {tab.label}
           </Text>
-          {/* لو حابب تظهر الـ badge لتبويب 'all' كمان شيل الشرط ده، أو سيبه لو مش عايزه يظهر */}
           {tab.key !== 'all' && (
             <View style={[styles.badge, { backgroundColor: colors.toggleBg }, isSelected && { backgroundColor: 'rgba(255, 255, 255, 0.2)' }]}>
               <Text style={[styles.badgeText, { color: colors.textMuted }, isSelected && { color: colors.white }]}>

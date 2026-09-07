@@ -45,16 +45,15 @@ export const DashboardHeader: React.FC<Props> = ({
   const userColor = getMemberColor(user?.uid || profileData?.uid || '');
 
   return (
-    <View style={styles.header}>
+   <View style={styles.header}>
       {/* User Info Header */}
       <View style={styles.headerTop}>
         <View>
           <Text style={[styles.greetingText, { color: colors.textMuted }]}>Good morning 👋</Text>
           <Text style={[styles.welcomeText, { color: colors.text }]}>
-            {loading ? 'Welcome back...' : `Welcome back, ${userName}`}
+            {loading ? 'Welcome back...' : `Welcome back, ${userName ? userName.split(' ')[0] : ''}`}
           </Text>
         </View>
-
         {/* Action Controls (Notifications + Profile Avatar) */}
         <View style={styles.actionGroup}>
           {/* Notification Button */}

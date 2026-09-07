@@ -123,7 +123,7 @@ export default function ArchivedTasksScreen({ project, onBack, onTaskSelect }: P
             <Text style={[styles.headerSub, { color: colors.textMuted }]}>Project: {project?.title || 'General'}</Text>
           </View>
 
-          <View style={[styles.archiveBadge, { backgroundColor: colors.toggleBg }]}>
+          <View style={[styles.archiveBadge, { backgroundColor: colors.secondary }]}>
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <Rect x="1.5" y="3" width="13" height="3" rx="1.2" stroke={colors.primary} strokeWidth="1.3" />
               <Path d="M2.5 6v6.5a1 1 0 001 1h9a1 1 0 001-1V6" stroke={colors.primary} strokeWidth="1.3" strokeLinecap="round" />
@@ -134,7 +134,7 @@ export default function ArchivedTasksScreen({ project, onBack, onTaskSelect }: P
 
         {tasks.length > 0 && (
           <View style={styles.taskCountRow}>
-            <View style={[styles.pillCount, { backgroundColor: colors.toggleBg }]}>
+            <View style={[styles.pillCount, { backgroundColor: colors.secondary }]}>
               <Text style={[styles.pillCountText, { color: colors.primary }]}>
                 {tasks.length} archived {tasks.length === 1 ? 'task' : 'tasks'}
               </Text>
@@ -179,7 +179,7 @@ export default function ArchivedTasksScreen({ project, onBack, onTaskSelect }: P
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {tasks.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <View style={[styles.emptyIconBox, { backgroundColor: colors.toggleBg }]}>
+              <View style={[styles.emptyIconBox, { backgroundColor: colors.secondary }]}>
                 <Svg width="48" height="48" viewBox="0 0 48 48" fill="none">
                   <Rect x="6" y="12" width="36" height="8" rx="4" stroke={colors.primary} strokeWidth="2" />
                   <Path d="M8 20v18a3 3 0 003 3h26a3 3 0 003-3V20" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" />
@@ -197,7 +197,7 @@ export default function ArchivedTasksScreen({ project, onBack, onTaskSelect }: P
                   key={task.id}
                   activeOpacity={0.9}
                   onPress={() => onTaskSelect && onTaskSelect(task.id)}
-                  style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: isDark ? 1 : 0 }]}
+                  style={[styles.card, { backgroundColor: colors.secondary, borderColor: colors.border, borderWidth: isDark ? 1 : 0 }]}
                 >
                   <View style={styles.cardHeader}>
                     <Text style={[styles.cardTitle, { color: colors.text }]}>{task.title}</Text>
@@ -315,8 +315,8 @@ const styles = StyleSheet.create({
   toast: { marginHorizontal: 20, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 16, borderWidth: 1.5 },
   toastText: { fontSize: 13, fontWeight: '600' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64 },
+  scrollContent: { paddingHorizontal: 20, paddingVertical: 16, gap: 12, flexGrow: 1 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64, flexGrow: 1 },
   emptyIconBox: { width: 100, height: 88, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
   emptySub: { fontSize: 14, textAlign: 'center', maxWidth: 240 },

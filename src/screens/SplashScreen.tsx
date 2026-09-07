@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { COLORS } from '../constants/theme';
 
 interface Props {
   onDone: () => void;
@@ -17,13 +18,14 @@ export default function SplashScreen({ onDone }: Props) {
         if (p >= 100) {
           clearInterval(interval);
           setPhase('ready');
+          onDone();
           return 100;
         }
         return p + 2;
       });
     }, 30);
     return () => clearInterval(interval);
-  }, []);
+  }, [onDone]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -55,37 +57,20 @@ export default function SplashScreen({ onDone }: Props) {
             <Text style={styles.title}>Kora</Text>
             <Text style={styles.subtitle}>Simplified Team Productivity</Text>
           </View>
-
-          {/* Tag Group */}
-          <View style={styles.tagGroup}>
-            {['Tasks', 'Projects', 'Teams'].map(t => (
-              <View key={t} style={styles.tag}>
-                <Text style={styles.tagText}>{t}</Text>
-              </View>
-            ))}
-          </View>
         </View>
 
         <View style={styles.bottomSection}>
-          {phase === 'loading' ? (
+          {phase === 'loading' && (
             <View style={styles.progressContainer}>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { width: `${progress}%` }]} />
+                <View style={[styles.progressBar, { width: ${progress}% }]} />
               </View>
               <Text style={styles.loadingText}>Loading workspace...</Text>
             </View>
-          ) : (
-            <TouchableOpacity
-              onPress={onDone}
-              activeOpacity={0.8}
-              style={styles.primaryButton}
-            >
-              <Text style={styles.primaryButtonText}>Get Started →</Text>
-            </TouchableOpacity>
           )}
 
           <Text style={styles.versionText}>Kora v2.1.0</Text>
-        </View>
+        </View> 
       </View>
     </SafeAreaView>
   );
@@ -94,7 +79,7 @@ export default function SplashScreen({ onDone }: Props) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: COLORS.primary,
   },
   container: {
     flex: 1,
@@ -111,11 +96,11 @@ const styles = StyleSheet.create({
   logoCard: {
     width: 80,
     height: 80,
-    backgroundColor: '#566551',
+    backgroundColor: COLORS.primary,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#566551',
+    shadowColor: 'black',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.28,
     shadowRadius: 16,
@@ -125,32 +110,16 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: '700',
     fontStyle: 'italic',
-    color: '#566551',
+    color: COLORS.white,
     letterSpacing: -1,
   },
   subtitle: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#94A3B8',
+    color: COLORS.secondary,
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginTop: 4,
-  },
-  tagGroup: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  tag: {
-    backgroundColor: '#C5D5E4',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#566551',
   },
   bottomSection: {
     position: 'absolute',
@@ -167,39 +136,21 @@ const styles = StyleSheet.create({
   progressTrack: {
     width: 192,
     height: 4,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: COLORS.secondary,
     borderRadius: 999,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#566551',
+    backgroundColor: COLORS.white,
     borderRadius: 999,
   },
   loadingText: {
     fontSize: 12,
-    color: '#94A3B8',
-  },
-  primaryButton: {
-    width: '100%',
-    maxWidth: 280,
-    backgroundColor: '#566551',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#566551',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
+    color: COLORS.secondary,
   },
   versionText: {
     fontSize: 12,
-    color: '#CBD5E1',
+    color: COLORS.secondary,
   },
 });
