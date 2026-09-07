@@ -9,7 +9,7 @@ interface Props {
   usersMap: Record<string, any>;
   projectMemberIds: string[];
   getInitials: (name?: string) => string;
-  getMemberColor: (userId: string) => string; // 1. أضفناها هنا
+  getMemberColor: (userId: string) => string;
 }
 
 export function TaskComments({ comments, usersMap, projectMemberIds, getInitials, getMemberColor }: Props) {
@@ -50,7 +50,6 @@ export function TaskComments({ comments, usersMap, projectMemberIds, getInitials
             const author = usersMap[c.authorId];
             return (
               <View key={c.id} style={styles.commentRow}>
-                {/* 2. استبدلنا لون الثيم الثابت بدالة getMemberColor حسب معرف الكاتب */}
                 <View style={[styles.avatar, { backgroundColor: getMemberColor(c.authorId), marginTop: 4 }]}>
                   <Text style={styles.avatarText}>{getInitials(author?.fullName)}</Text>
                 </View>

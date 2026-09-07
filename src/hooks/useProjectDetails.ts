@@ -177,13 +177,6 @@ export function useProjectDetails(initialProject: Project, onBack: () => void) {
   };
 
   const handleTransferOwnership = async () => {
-    // ضعي هذا السطر في البداية تماماً قبل أي شروط
-    console.log("=== TRANSFER CLICKED ===", { 
-      selectedNewOwner, 
-      userId: user?.uid, 
-      projectId: currentProject?.id 
-    });
-
     if (!selectedNewOwner || !user?.uid) {
       console.log("Stopped: Missing selectedNewOwner or user.uid");
       return;

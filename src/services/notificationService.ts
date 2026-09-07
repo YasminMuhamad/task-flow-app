@@ -1,4 +1,3 @@
-// src/services/notificationService.ts
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../api/firebase';
 import { NotificationType } from '../types/notification';

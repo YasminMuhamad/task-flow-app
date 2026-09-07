@@ -405,6 +405,7 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingHorizontal: 20,
     paddingVertical: 12,
+    flexGrow: 1,
   },
   sectionHeader: {
     paddingTop: 14,
@@ -487,6 +488,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   emptyContainer: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 64,
