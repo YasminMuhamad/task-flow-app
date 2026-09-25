@@ -63,13 +63,13 @@ export default function SplashScreen({ onDone }: Props) {
           {phase === 'loading' && (
             <View style={styles.progressContainer}>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressBar, { width: ${progress}% }]} />
+                <View style={[styles.progressBar, { width: `${progress}%` }]} />
               </View>
               <Text style={styles.loadingText}>Loading workspace...</Text>
             </View>
           )}
 
-          <Text style={styles.versionText}>Kora v2.1.0</Text>
+          <Text style={styles.versionText}>Kora 1.0.0</Text>
         </View> 
       </View>
     </SafeAreaView>

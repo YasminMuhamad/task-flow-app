@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -33,13 +34,13 @@ export default function DashboardScreen({
   onNotifications,
 }: Props) {
   const { userProjects, user, loading } = useApp();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   
   const [active, setActive] = useState<FilterTab>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const insets = useSafeAreaInsets();
+  // const insets = useSafeAreaInsets();
 
   const filteredProjects = useMemo(() => {
     let list = [...userProjects];
@@ -69,6 +70,8 @@ export default function DashboardScreen({
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.primary} />
+      
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <DashboardHeader onProfileSelect={onProfileSelect} onSearch={onSearch} onNotifications={onNotifications} />
@@ -117,14 +120,14 @@ export default function DashboardScreen({
             activeOpacity={0.9}
             style={[
               styles.fabButton, 
-              { backgroundColor: colors.primary, shadowColor: colors.primary, bottom: insets.bottom } 
+              { backgroundColor: colors.primary, shadowColor: colors.primary, bottom: 10 } 
             ]}
           >
             <Svg width="22" height="22" viewBox="0 0 22 22" fill="none">
               <Path d="M11 4v14M4 11h14" stroke={colors.white} strokeWidth="2.5" strokeLinecap="round" />
             </Svg>
           </TouchableOpacity>
-          <Text style={[styles.fabText, { color: colors.primary, bottom: insets.bottom }]}>New</Text>
+          <Text style={[styles.fabText, { color: colors.primary, bottom: 10 }]}>New</Text>
         </View>
       )}
       

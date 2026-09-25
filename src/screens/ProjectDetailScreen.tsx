@@ -7,8 +7,9 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 
 import { useTheme } from '../context/ThemeContext';
@@ -164,7 +165,7 @@ const TaskItem = memo(({ item, usersMap, getInitials, onTaskSelect, onToggleStat
 });
 
 export default function ProjectDetailScreen({ project: initialProject, onBack, onTaskSelect, onOpenArchived }: Props) {
-  const insets = useSafeAreaInsets();
+  // const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
   const {
@@ -238,9 +239,11 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.primary} />
+      
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={onBack} style={styles.iconBtn} activeOpacity={0.8}>
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -382,7 +385,7 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
       )}
 
       {/* Footer / Add Task Button */}
-      <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 16), backgroundColor: colors.background }]}>
+      <View style={[styles.footerContainer, { paddingBottom: 16, backgroundColor: colors.background }]}>
         {filteredTasks.length > 0 && (
           <TouchableOpacity onPress={() => setModalVisible(true)} style={[styles.addTaskBtn, { backgroundColor: colors.primary }]} activeOpacity={0.9}>
             <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -477,7 +480,7 @@ export default function ProjectDetailScreen({ project: initialProject, onBack, o
         onConfirm={handleLeaveProject}
         onCancel={() => setLeaveConfirmVisible(false)}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -498,6 +501,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     marginBottom: 12,
+    marginTop: 12,
   },
   iconBtn: {
     width: 32,

@@ -233,6 +233,7 @@ export function useTaskDetails(taskId: string, onBack?: () => void) {
 
       const file = result.assets[0];
       setUploadingFile(true);
+
       const formData = new FormData();
 
       if (Platform.OS === "web") {
@@ -244,19 +245,29 @@ export function useTaskDetails(taskId: string, onBack?: () => void) {
           formData.append("file", blob, file.name || "upload");
         }
       } else {
-        const cleanUri = Platform.OS === "android" ? file.uri : file.uri.replace("file://", "");
-        formData.append("file", {
-          uri: cleanUri,
-          type: file.mimeType || "application/octet-stream",
-          name: file.name || `upload_${Date.now()}`,
-        } as any);
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onload = function () {
+            resolve(xhr.response);
+          };
+          xhr.onerror = function (e) {
+            reject(new TypeError("Network request failed"));
+          };
+          xhr.responseType = "blob";
+          xhr.open("GET", file.uri, true);
+          xhr.send(null);
+        });
+
+        formData.append("file", blob, file.name || `upload_${Date.now()}`);
       }
 
       formData.append("upload_preset", "yrwcqwqv");
+
       const response = await fetch("https://api.cloudinary.com/v1_1/dskzuvxjp/auto/upload", {
         method: "POST",
         body: formData,
       });
+
       const cloudinaryData = await response.json();
       if (!response.ok) throw new Error(cloudinaryData.error?.message || "Upload failed");
 
@@ -275,7 +286,7 @@ export function useTaskDetails(taskId: string, onBack?: () => void) {
       setUploadingFile(false);
     }
   };
-
+  
   const handleCycleStatus = async () => {
     if (!task) return;
     const statusMap: Record<TaskStatus, TaskStatus> = { todo: "inprogress", inprogress: "done", done: "todo" };

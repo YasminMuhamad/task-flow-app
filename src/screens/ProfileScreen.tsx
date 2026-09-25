@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
@@ -180,6 +181,8 @@ export default function ProfileScreen({
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.primary} />
+      
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
@@ -309,7 +312,7 @@ export default function ProfileScreen({
             </Svg>
           </TouchableOpacity>
 
-          <Text style={[styles.footerText, { color: colors.textMuted }]}>Kora v2.1.0 · Made with ♥</Text>
+          <Text style={[styles.footerText, { color: colors.textMuted }]}>Kora 1.0.0 · Made with ♥</Text>
         </View>
       </ScrollView>
 
