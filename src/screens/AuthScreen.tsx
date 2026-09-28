@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,9 +18,12 @@ import { auth, db } from '../api/firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  GoogleAuthProvider,
+  signInWithCredential
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { GoogleSignin, statusCodes, SignInSuccessResponse } from '@react-native-google-signin/google-signin';
 
 const AuthScreen = () => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -31,6 +34,57 @@ const AuthScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [googleLoading, setGoogleLoading] = useState(false);
+ 
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    });
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setErrorMessage(null);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+      const response = await GoogleSignin.signIn();
+
+      if (response.type === 'success') {
+        const idToken = response.data.idToken;
+
+        if (!idToken) {
+          throw new Error('No ID token received from Google.');
+        }
+
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        const user = userCredential.user;
+
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (!userDoc.exists()) {
+          await setDoc(userDocRef, {
+            uid: user.uid,
+            fullName: user.displayName || 'Google User',
+            email: user.email,
+            createdAt: serverTimestamp(),
+          });
+        }
+      } else if (response.type === 'cancelled') {
+        console.log('User cancelled the login flow');
+      }
+    } catch (error: any) {
+      console.error('Google Sign-In Error:', error);
+      if (error.code !== statusCodes.SIGN_IN_CANCELLED) {
+        setErrorMessage('An error occurred while connecting to Firebase via Google.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleAuth = async () => {
     Keyboard.dismiss();
@@ -254,28 +308,38 @@ const AuthScreen = () => {
             </View>
 
             {/* Google SSO Button */}
-            <TouchableOpacity style={styles.googleBtn} activeOpacity={0.8}>
-              <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <Path
-                  d="M15.5 8.18c0-.57-.05-1.11-.14-1.63H8v3.09h4.19c-.18.97-.73 1.8-1.55 2.35v1.95h2.51C14.64 12.58 15.5 10.55 15.5 8.18z"
-                  fill="#4285F4"
-                />
-                <Path
-                  d="M8 16c2.16 0 3.97-.72 5.3-1.94l-2.51-1.95c-.71.48-1.63.76-2.79.76-2.14 0-3.95-1.45-4.6-3.39H.82v2.02C2.15 14.26 4.87 16 8 16z"
-                  fill="#34A853"
-                />
-                <Path
-                  d="M3.4 9.48A4.83 4.83 0 013.16 8c0-.52.09-1.02.24-1.48V4.5H.82A7.99 7.99 0 000 8c0 1.29.31 2.51.82 3.5l2.58-2.02z"
-                  fill="#FBBC05"
-                />
-                <Path
-                  d="M8 3.18c1.21 0 2.29.42 3.14 1.24l2.35-2.35C11.96.79 10.15 0 8 0 4.87 0 2.15 1.74.82 4.5l2.58 2.02C4.05 4.62 5.86 3.18 8 3.18z"
-                  fill="#EA4335"
-                />
-              </Svg>
-              <Text style={styles.googleBtnText}>Continue with Google</Text>
+            <TouchableOpacity 
+              style={styles.googleBtn} 
+              activeOpacity={0.8}
+              disabled={googleLoading}
+              onPress={handleGoogleSignIn}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color="#1E293B" size="small" />
+              ) : (
+                <>
+                  <Svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <Path
+                              d="M15.5 8.18c0-.57-.05-1.11-.14-1.63H8v3.09h4.19c-.18.97-.73 1.8-1.55 2.35v1.95h2.51C14.64 12.58 15.5 10.55 15.5 8.18z"
+                              fill="#4285F4"
+                            />
+                            <Path
+                              d="M8 16c2.16 0 3.97-.72 5.3-1.94l-2.51-1.95c-.71.48-1.63.76-2.79.76-2.14 0-3.95-1.45-4.6-3.39H.82v2.02C2.15 14.26 4.87 16 8 16z"
+                              fill="#34A853"
+                            />
+                            <Path
+                              d="M3.4 9.48A4.83 4.83 0 013.16 8c0-.52.09-1.02.24-1.48V4.5H.82A7.99 7.99 0 000 8c0 1.29.31 2.51.82 3.5l2.58-2.02z"
+                              fill="#FBBC05"
+                            />
+                            <Path
+                              d="M8 3.18c1.21 0 2.29.42 3.14 1.24l2.35-2.35C11.96.79 10.15 0 8 0 4.87 0 2.15 1.74.82 4.5l2.58 2.02C4.05 4.62 5.86 3.18 8 3.18z"
+                              fill="#EA4335"
+                            />
+                          </Svg>
+                  <Text style={styles.googleBtnText}>Continue with Google</Text>
+                </>
+              )}
             </TouchableOpacity>
-
             {/* Switch Mode Footer Text */}
             <View style={styles.footerRow}>
               <Text style={styles.footerText}>

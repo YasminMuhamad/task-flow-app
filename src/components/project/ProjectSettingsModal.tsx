@@ -162,12 +162,12 @@ onPress={() => {
     setSelectedNewOwner(uid);
   }}                          >
                             <View style={{ flex: 1 }}>
-                              <Text
-                                style={[styles.memberName, { color: colors.text }, isSelected && { color: colors.primary, fontWeight: '700' }]}
-                              >
+                              <Text style={[styles.memberName, { color: colors.text }, isSelected && { color: colors.primary, fontWeight: '700' }]}>
                                 {name}
                               </Text>
-                              {email ? <Text style={[styles.selectEmail, { color: colors.textMuted }]}>{email}</Text> : null}
+                              {Boolean(email) && (
+                                <Text style={[styles.selectEmail, { color: colors.textMuted }]}>{email}</Text>
+                              )}
                             </View>
                             {isSelected && <View style={[styles.radioSelectedDot, { backgroundColor: colors.primary }]} />}
                           </TouchableOpacity>
@@ -217,7 +217,7 @@ onPress={() => {
             </ScrollView>
           ) : (
             /* Tab 2: Manage Members */
-            <View style={{ flex: 1, marginTop: 12 }}>
+            <View style={{ marginTop: 12 }}>
               <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Search by Email</Text>
               <View style={styles.searchBoxContainer}>
                 <TextInput
@@ -259,8 +259,13 @@ onPress={() => {
               )}
 
               <Text style={[styles.inputLabel, { marginTop: 16, color: colors.textMuted }]}>Project Members</Text>
-              <ScrollView style={styles.membersListScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                {currentProject.memberIds?.map((uid) => {
+              <ScrollView 
+                style={styles.membersListScroll} 
+                contentContainerStyle={{ flexGrow: 1 }} 
+                nestedScrollEnabled 
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+              >                {currentProject.memberIds?.map((uid) => {
                   const info = usersMap[uid];
                   const name = info?.fullName || 'User';
                   const email = info?.email || '';
@@ -274,9 +279,11 @@ onPress={() => {
                       </View>
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={[styles.memberName, { color: colors.text }]}>
-                          {name} {isThisMemberOwner ? '(Owner)' : ''}
+                          {`${name}${isThisMemberOwner ? ' (Owner)' : ''}`}
                         </Text>
-                        {email ? <Text style={[styles.selectEmail, { color: colors.textMuted }]}>{email}</Text> : null}
+                        {Boolean(email) && (
+                          <Text style={[styles.selectEmail, { color: colors.textMuted }]}>{email}</Text>
+                        )}
                       </View>
 
                       {isOwner && !isThisMemberOwner && (

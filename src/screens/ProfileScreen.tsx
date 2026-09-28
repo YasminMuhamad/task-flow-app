@@ -14,6 +14,7 @@ import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
 import { BlurView } from 'expo-blur';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 interface ProfileScreenProps {
   onBack?: () => void;
@@ -52,6 +53,7 @@ export default function ProfileScreen({
   const handleLogout = async () => {
     if (onLogout) {
       onLogout();
+      await GoogleSignin.signOut();
     } else {
       await logout();
     }

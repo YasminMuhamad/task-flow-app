@@ -473,6 +473,7 @@ const styles = StyleSheet.create({
   projectTagText: {
     fontSize: 11,
     fontWeight: "500",
+    maxWidth: 150,
   },
   timeText: {
     fontSize: 11,
