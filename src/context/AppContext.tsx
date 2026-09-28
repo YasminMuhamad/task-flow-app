@@ -233,7 +233,6 @@ useEffect(() => {
       const flattenedAttachments = results.flat();
 
       if (isMounted) {
-        console.log("Filtered Project Attachments:", flattenedAttachments);
         setAllAttachments(flattenedAttachments);
       }
     } catch (e) {

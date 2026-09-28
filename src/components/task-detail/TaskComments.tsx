@@ -16,26 +16,40 @@ export function TaskComments({ comments, usersMap, projectMemberIds, getInitials
   const { colors } = useTheme();
 
   const renderFormattedComment = (text: string) => {
+    // 1. جلب قائمة أسماء الأعضاء
     const memberNames = projectMemberIds
       .map((id) => usersMap[id]?.fullName)
       .filter((v): v is string => !!v);
 
-    const words = text.split(" ");
-    return words.map((word, index) => {
-      const cleanName = word.startsWith("@") ? word.substring(1) : "";
-      const isExactMention = memberNames.includes(cleanName);
+    if (!memberNames.length) {
+      return <Text style={{ color: colors.text }}>{text}</Text>;
+    }
 
-      if (
-        isExactMention ||
-        (word.startsWith("@") && memberNames.some((name) => word.substring(1).includes(name)))
-      ) {
+    const sortedNames = [...memberNames].sort((a, b) => b.length - a.length);
+    
+    const escapedNames = sortedNames.map((name) => name.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")).join("|");
+    const mentionRegex = new RegExp(`(@(?:${escapedNames}))`, "gi");
+
+    const parts = text.split(mentionRegex);
+
+    return parts.map((part, index) => {
+      const isMention = sortedNames.some(
+        (name) => part.toLowerCase() === `@${name.toLowerCase()}`
+      );
+
+      if (isMention) {
         return (
-          <Text key={index} style={styles.mentionHighlight}>
-            {word}{" "}
+          <Text key={index} style={[styles.mentionHighlight, { color: colors.primary }]}>
+            {part}
           </Text>
         );
       }
-      return <Text key={index} style={{ color: colors.text }}>{word} </Text>;
+
+      return (
+        <Text key={index} style={{ color: colors.text }}>
+          {part}
+        </Text>
+      );
     });
   };
 

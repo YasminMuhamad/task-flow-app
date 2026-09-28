@@ -1,29 +1,42 @@
 {
   "expo": {
-    "name": "TaskFlowApp",
+    "name": "Kora",
     "slug": "TaskFlowApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/kora-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#566551",
+        "foregroundImage": "./assets/kora-icon.png",
+        "backgroundImage": "./assets/kora-icon.png",
+        "monochromeImage": "./assets/kora-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.TaskFlowApp"
+      "package": "com.ym.kora"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/kora-icon.png"
     },
     "plugins": [
-      "@react-native-community/datetimepicker"
-    ]
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8584ac2c-2da9-4ff2-939a-42c08738f97c"
+      },
+      "firebaseApiKey": "process.env.EXPO_PUBLIC_FIREBASE_API_KEY",
+      "firebaseAuthDomain": "process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN",
+      "firebaseProjectId": "process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID",
+      "firebaseStorageBucket": "process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET",
+      "firebaseMessagingSenderId": "process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+      "firebaseAppId": "process.env.EXPO_PUBLIC_FIREBASE_APP_ID",
+      "firebaseMeasurementId": "process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID"
+    }
   }
 }

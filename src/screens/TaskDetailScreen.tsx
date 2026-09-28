@@ -12,10 +12,7 @@ import {
   Modal,
   Platform,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { useAppContext } from "../context/AppContext";
 
@@ -38,7 +35,7 @@ interface Props {
 }
 
 export default function TaskDetailScreen({ onBack, taskId }: Props) {
-  const insets = useSafeAreaInsets();
+  // const insets = useSafeAreaInsets();
   const { usersMap, getInitials, profileData, getMemberColor } = useAppContext();
   const { colors, isDark } = useTheme();
 
@@ -201,7 +198,7 @@ export default function TaskDetailScreen({ onBack, taskId }: Props) {
 )}
 
         {/* Bottom Comment Input Bar */}
-<View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom }]}>    
+<View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>    
   <View style={[styles.avatar, { backgroundColor: profileData?.uid ? getMemberColor(profileData.uid) : colors.primary }]}>
     <Text style={[styles.avatarText, { color: colors.white }]}>
       {getInitials(profileData?.fullName)}
