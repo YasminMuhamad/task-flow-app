@@ -20,7 +20,7 @@ import NotificationsScreen from './src/screens/NotificationsScreen';
 import { ThemeProvider } from './src/context/ThemeContext';
 import { COLORS } from './src/constants/theme';
 import { Project } from './src/types/project';
-
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 const ONBOARDING_KEY = '@kora_has_seen_onboarding';
 
 function MainNavigator() {
@@ -35,6 +35,14 @@ function MainNavigator() {
   const [showArchivedTasks, setShowArchivedTasks] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      profileImageSize: 120,
+    });
+  }, []);
 
   useEffect(() => {
     if (user) {

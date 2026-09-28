@@ -18,6 +18,10 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID || extra?.firebaseMeasurementId,
 };
 
+if (!firebaseConfig.apiKey) {
+  console.error("تحذير: مفتاح Firebase API غير موجود! تحقق من ملف .env");
+}
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = (() => {

@@ -248,15 +248,18 @@ useEffect(() => {
   };
 }, [user, userProjects, allProjectTasks]);
 
-  // 5. User profiles cache for all project members
+  // 5. User profiles cache for all project members (FIXED)
   useEffect(() => {
     if (!user || userProjects.length === 0) return;
 
     const allMemberIds = Array.from(
       new Set(userProjects.flatMap((p) => p.memberIds || []))
-    );
+    ).filter(Boolean);
 
-    const missingMemberIds = allMemberIds.filter((id) => !usersMapRef.current[id]);
+    if (allMemberIds.length === 0) return;
+
+    const missingMemberIds = allMemberIds.filter((id) => !usersMap[id]);
+
     if (missingMemberIds.length === 0) return;
 
     const chunks: string[][] = [];
@@ -266,19 +269,26 @@ useEffect(() => {
 
     const unsubs = chunks.map((chunk) => {
       const q = query(collection(db, 'users'), where(documentId(), 'in', chunk));
-      return onSnapshot(q, (snapshot) => {
-        const updatedUsers: Record<string, UserProfile> = {};
-        snapshot.docs.forEach((docSnap) => {
-          updatedUsers[docSnap.id] = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
-        });
-        setUsersMap((prev) => ({ ...prev, ...updatedUsers }));
-      });
+      return onSnapshot(
+        q,
+        (snapshot) => {
+          const updatedUsers: Record<string, UserProfile> = {};
+          snapshot.docs.forEach((docSnap) => {
+            updatedUsers[docSnap.id] = { uid: docSnap.id, ...docSnap.data() } as UserProfile;
+          });
+          
+          setUsersMap((prev) => ({ ...prev, ...updatedUsers }));
+        },
+        (error) => {
+          console.error("Error fetching project members profile:", error);
+        }
+      );
     });
 
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [user, userProjects]);
+  }, [user, userProjects, usersMap]);
 
   // 6. Real-time Notifications Listener
   useEffect(() => {

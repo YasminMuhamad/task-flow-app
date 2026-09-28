@@ -2,29 +2,42 @@
   "expo": {
     "name": "Kora",
     "slug": "TaskFlowApp",
+    "scheme": "kora",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/kora-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kora.app",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#566551",
-        "foregroundImage": "./assets/kora-icon.png",
-        "backgroundImage": "./assets/kora-icon.png",
-        "monochromeImage": "./assets/kora-icon.png"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.ym.kora"
+      "package": "com.kora.app",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/kora-icon.png"
     },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      "expo-web-browser",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.446569213306-e7l66hjohlc95k087ev59lgdkd6ud68o"
+        }
+      ]
     ],
     "extra": {
       "eas": {

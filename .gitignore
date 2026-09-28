@@ -41,3 +41,11 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# key stores
+*.jks
+*.keystore
+
+# 
+google-services.json
+GoogleService-Info.plist
